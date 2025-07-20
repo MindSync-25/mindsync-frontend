@@ -1,47 +1,55 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+const { width } = Dimensions.get('window');
 
 const LoginScreen = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-
-  const handleLogin = () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in both fields');
-      return;
-    }
-    // TODO: Add real login logic here
-    Alert.alert('Login', `Email: ${email}\nPassword: ${password}`);
-  };
-
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>MindSync</Text>
+      <View style={styles.card}>
+        <Text style={styles.title}>Welcome to MindSync</Text>
+        <Text style={styles.subtitle}>Login to continue</Text>
 
-      <TextInput
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        style={styles.input}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
+        <TextInput
+          placeholder="Email"
+          placeholderTextColor="#aaa"
+          style={styles.input}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
 
-      <TextInput
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        style={styles.input}
-        secureTextEntry
-      />
+        <TextInput
+          placeholder="Password"
+          placeholderTextColor="#aaa"
+          secureTextEntry
+          style={styles.input}
+        />
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Login</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.loginButton}>
+          <Text style={styles.loginButtonText}>Log In</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity>
-        <Text style={styles.signupText}>Don't have an account? Sign up</Text>
-      </TouchableOpacity>
+        <Text style={styles.or}>or</Text>
+
+        {/* Google Login */}
+        <TouchableOpacity style={styles.socialButton}>
+          <Ionicons name="logo-google" size={20} color="#fff" style={styles.icon} />
+          <Text style={styles.socialButtonText}>Continue with Google</Text>
+        </TouchableOpacity>
+
+        {/* Apple Login (iOS + web visible) */}
+        {(Platform.OS === 'ios' || Platform.OS === 'web') && (
+          <TouchableOpacity style={styles.socialButton}>
+            <Ionicons name="logo-apple" size={20} color="#fff" style={styles.icon} />
+            <Text style={styles.socialButtonText}>Continue with Apple</Text>
+          </TouchableOpacity>
+        )}
+
+        <Text style={styles.footerText}>
+         Don’t have an account?{' '}
+         <Text style={styles.linkText} onPress={() => navigation.navigate('Signup')}> Sign Up</Text></Text>
+      </View>
     </View>
   );
 };
@@ -51,39 +59,84 @@ export default LoginScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
-    padding: 24,
+    backgroundColor: '#121212',
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  card: {
+    width: width > 480 ? 400 : '100%',
+    backgroundColor: '#1c1c1c',
+    padding: 24,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 40,
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#aaa',
+    marginBottom: 32,
     textAlign: 'center',
   },
   input: {
-    backgroundColor: '#f2f2f2',
+    backgroundColor: '#2a2a2a',
     padding: 16,
-    borderRadius: 10,
-    marginBottom: 16,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#4A90E2',
-    padding: 16,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  buttonText: {
+    borderRadius: 12,
     color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
+    marginBottom: 16,
   },
-  signupText: {
-    textAlign: 'center',
+  loginButton: {
+    backgroundColor: '#2a2a2a', // Changed from blue to match image
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    borderColor: '#444',
+    borderWidth: 1,
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  or: {
     color: '#666',
+    marginVertical: 16,
     fontSize: 14,
+    textAlign: 'center',
+  },
+  socialButton: {
+    backgroundColor: '#2a2a2a',
+    padding: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  socialButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  icon: {
+    marginLeft: 10,
+  },
+  footerText: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 24,
   },
 });
