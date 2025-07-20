@@ -1,14 +1,14 @@
 // App.tsx
 import React from 'react';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import AppNavigator from './src/navigation/AppNavigator';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import AppNavigator from './navigation/AppNavigator';
 
-const App = () => {
+
+export default function App() {
   return (
-    <SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <AppNavigator />
-    </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
-};
+}
 
-export default App;
