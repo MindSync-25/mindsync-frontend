@@ -1,79 +1,95 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+  Dimensions,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const SignupScreen = ({ navigation }: any) => {
+const { width } = Dimensions.get('window');
+
+const SignupScreen = () => {
+  const navigation = useNavigation();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const handleSignup = () => {
-    // TODO: Add signup logic
     console.log('Signup', { name, email, password, confirmPassword });
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Create Account</Text>
+      <View style={styles.card}>
+        <Text style={styles.title}>Create Account</Text>
+        <Text style={styles.subtitle}>Start your journey with MindSync</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Full Name"
-        placeholderTextColor="#888"
-        value={name}
-        onChangeText={setName}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#888"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#888"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm Password"
-        placeholderTextColor="#888"
-        secureTextEntry
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-      />
+        <TextInput
+          placeholder="Full Name"
+          placeholderTextColor="#aaa"
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+        />
+        <TextInput
+          placeholder="Email"
+          placeholderTextColor="#aaa"
+          style={styles.input}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+        />
+        <TextInput
+          placeholder="Password"
+          placeholderTextColor="#aaa"
+          secureTextEntry
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+        />
+        <TextInput
+          placeholder="Confirm Password"
+          placeholderTextColor="#aaa"
+          secureTextEntry
+          style={styles.input}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+        />
 
-      <TouchableOpacity style={styles.button} onPress={handleSignup}>
-        <Text style={styles.buttonText}>Sign Up</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.orText}>or continue with</Text>
-
-      <View style={styles.socialContainer}>
-        <TouchableOpacity style={styles.socialButton}>
-          <Ionicons name="logo-google" size={24} color="#EA4335" />
+        <TouchableOpacity style={styles.signupButton} onPress={handleSignup}>
+          <Text style={styles.signupButtonText}>Sign Up</Text>
         </TouchableOpacity>
 
-        {Platform.OS === 'ios' && (
+        <Text style={styles.footerText}>
+         Already have an account?{' '}
+         <Text style={styles.linkText} onPress={() => navigation.navigate('Login')}>
+         Log In
+        </Text>
+        </Text>
+
+
+
+        {/* Social Logins */}
+        <TouchableOpacity style={styles.socialButton}>
+          <Ionicons name="logo-google" size={20} color="#fff" style={styles.icon} />
+          <Text style={styles.socialButtonText}>Continue with Google</Text>
+        </TouchableOpacity>
+
+        {(Platform.OS === 'ios' || Platform.OS === 'web') && (
           <TouchableOpacity style={styles.socialButton}>
-            <Ionicons name="logo-apple" size={24} color="#000" />
+            <Ionicons name="logo-apple" size={20} color="#fff" style={styles.icon} />
+            <Text style={styles.socialButtonText}>Continue with Apple</Text>
           </TouchableOpacity>
         )}
-      </View>
 
-      <Text style={styles.footerText}>
-        Already have an account?{' '}
-        <Text style={styles.linkText} onPress={() => navigation.navigate('Login')}>
-          Log In
-        </Text>
-      </Text>
+      </View>
     </View>
   );
 };
@@ -83,61 +99,91 @@ export default SignupScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    paddingHorizontal: 24,
-    paddingTop: 80,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    marginBottom: 30,
-    color: '#1a1a1a',
-  },
-  input: {
-    width: '100%',
-    height: 48,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#007BFF',
-    width: '100%',
-    height: 48,
-    borderRadius: 12,
+    backgroundColor: '#121212',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
+    padding: 20,
   },
-  buttonText: {
-    color: '#fff',
+  card: {
+    width: width > 480 ? 400 : '100%',
+    backgroundColor: '#1c1c1c',
+    padding: 24,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  title: {
+    fontSize: 28,
     fontWeight: '600',
+    color: '#fff',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
     fontSize: 16,
+    color: '#aaa',
+    marginBottom: 24,
+    textAlign: 'center',
   },
-  orText: {
-    marginTop: 20,
-    marginBottom: 12,
+  input: {
+    backgroundColor: '#2a2a2a',
+    padding: 14,
+    borderRadius: 12,
+    color: '#fff',
+    marginBottom: 14,
+  },
+  signupButton: {
+    backgroundColor: '#2a2a2a',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    borderColor: '#444',
+    borderWidth: 1,
+  },
+  signupButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  or: {
     color: '#666',
-  },
-  socialContainer: {
-    flexDirection: 'row',
-    gap: 16,
+    marginVertical: 16,
+    fontSize: 14,
+    textAlign: 'center',
   },
   socialButton: {
-    backgroundColor: '#f1f1f1',
-    padding: 12,
-    borderRadius: 10,
+    backgroundColor: '#2a2a2a',
+    padding: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  socialButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  icon: {
+    marginLeft: 10,
   },
   footerText: {
-    marginTop: 40,
-    color: '#444',
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 24,
+    marginBottom: 12
   },
   linkText: {
-    color: '#007BFF',
+    color: '#fff',
     fontWeight: '600',
+    marginBottom: 12
+    
   },
 });

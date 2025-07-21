@@ -1,10 +1,12 @@
 import React from 'react';
+import { useNavigation } from '@react-navigation/native';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
 const LoginScreen = () => {
+  const navigation = useNavigation();
   return (
     <View style={styles.container}>
       <View style={styles.card}>
@@ -47,8 +49,11 @@ const LoginScreen = () => {
         )}
 
         <Text style={styles.footerText}>
-         Don’t have an account?{' '}
-         <Text style={styles.linkText} onPress={() => navigation.navigate('Signup')}> Sign Up</Text></Text>
+         Already have an account?{' '}
+         <Text style={styles.linkText} onPress={() => navigation.navigate('Signup')}>
+         Sing Up
+        </Text>
+        </Text>
       </View>
     </View>
   );
@@ -134,9 +139,17 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   footerText: {
-    color: '#888',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 24,
-  },
+  color: '#888',
+  fontSize: 14,
+  lineHeight: 20, // Make sure this matches
+  textAlign: 'center',
+  marginTop: 24,
+},
+linkText: {
+  color: '#fff',
+  fontWeight: '600',
+  fontSize: 14,       // Match with footerText
+  lineHeight: 20,     // Match with footerText
+}
+
 });
