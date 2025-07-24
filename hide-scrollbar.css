@@ -1,0 +1,9 @@
+/* Hide vertical scrollbar for web only */
+::-webkit-scrollbar {
+  display: none;
+}
+
+body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import {
   View,
@@ -8,20 +8,102 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
+import * as AuthSession from 'expo-auth-session';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
+console.log('EXPO Redirect URI:', AuthSession.makeRedirectUri({ useProxy: true }));
+
+const GOOGLE_CLIENT_ID = '7201600018-un5ho48dggcpgfqr2hthckv6p5cpf131.apps.googleusercontent.com';
 const { width } = Dimensions.get('window');
 
-const SignupScreen = () => {
+export default function SignupScreen() {
   const navigation = useNavigation();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSignup = () => {
-    console.log('Signup', { name, email, password, confirmPassword });
+  // Google AuthSession setup
+
+   // Generate a nonce without Crypto.randomUUID
+  const [nonce] = useState(() => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return Math.random().toString(36).substring(2);
+  });
+
+  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+  const [request, response, promptAsync] = AuthSession.useAuthRequest(
+    {
+      clientId: GOOGLE_CLIENT_ID,
+      redirectUri,
+      scopes: ['openid', 'profile', 'email'],
+      responseType: AuthSession.ResponseType.IdToken,
+      usePKCE: false,
+      extraParams: { nonce: nonce || '' }
+    },
+    { authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth' }
+  );
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const idToken = response.params.id_token;
+      axios
+        .post('http://192.168.1.188:5000/api/auth/google', { idToken })
+        .then((res) => {
+          Alert.alert('Success', res.data.message || 'Logged in with Google');
+          navigation.navigate('Login');
+        })
+        .catch((err) => {
+          console.error('Google login error', err);
+          Alert.alert('Error', err.response?.data?.message || err.message);
+        });
+    }
+  }, [response]);
+
+  // Apple Sign-In
+  const handleAppleSignIn = async () => {
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const identityToken = credential.identityToken;
+      const res = await axios.post('http://192.168.1.188:5000/api/auth/apple', { identityToken });
+      Alert.alert('Success', res.data.message || 'Logged in with Apple');
+      navigation.navigate('Login');
+    } catch (err: any) {
+      console.error('Apple login error', err);
+      Alert.alert('Error', err.response?.data?.message || err.message);
+    }
+  };
+
+  // Regular Signup
+  const handleSignup = async () => {
+    try {
+      console.log('Signup button pressed');
+      const res = await axios.post('http://192.168.1.188:5000/api/auth/register', {
+        name,
+        email,
+        password,
+        confirmPassword,
+      });
+      Alert.alert('Success', res.data.message);
+      setErrorMessage('');
+      navigation.navigate('Login');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Signup failed';
+      console.log('Signup error FULL:', JSON.stringify(err.response?.data, null, 2));
+      setErrorMessage(msg);
+    }
   };
 
   return (
@@ -35,7 +117,10 @@ const SignupScreen = () => {
           placeholderTextColor="#aaa"
           style={styles.input}
           value={name}
-          onChangeText={setName}
+          onChangeText={(text) => {
+            setName(text);
+            setErrorMessage('');
+          }}
         />
         <TextInput
           placeholder="Email"
@@ -44,7 +129,10 @@ const SignupScreen = () => {
           keyboardType="email-address"
           autoCapitalize="none"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(text) => {
+            setEmail(text);
+            setErrorMessage('');
+          }}
         />
         <TextInput
           placeholder="Password"
@@ -52,7 +140,10 @@ const SignupScreen = () => {
           secureTextEntry
           style={styles.input}
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(text) => {
+            setPassword(text);
+            setErrorMessage('');
+          }}
         />
         <TextInput
           placeholder="Confirm Password"
@@ -60,41 +151,49 @@ const SignupScreen = () => {
           secureTextEntry
           style={styles.input}
           value={confirmPassword}
-          onChangeText={setConfirmPassword}
+          onChangeText={(text) => {
+            setConfirmPassword(text);
+            setErrorMessage('');
+          }}
         />
+
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
         <TouchableOpacity style={styles.signupButton} onPress={handleSignup}>
           <Text style={styles.signupButtonText}>Sign Up</Text>
         </TouchableOpacity>
 
         <Text style={styles.footerText}>
-         Already have an account?{' '}
-         <Text style={styles.linkText} onPress={() => navigation.navigate('Login')}>
-         Log In
+          Already have an account?{' '}
+          <Text style={styles.linkText} onPress={() => navigation.navigate('Login')}>
+            Log In
+          </Text>
         </Text>
-        </Text>
 
-
-
-        {/* Social Logins */}
-        <TouchableOpacity style={styles.socialButton}>
+        {/* Google Sign-In */}
+        <TouchableOpacity
+          style={styles.socialButton}
+          disabled={!request}
+          onPress={() => promptAsync({ useProxy: true })}
+        >
           <Ionicons name="logo-google" size={20} color="#fff" style={styles.icon} />
           <Text style={styles.socialButtonText}>Continue with Google</Text>
         </TouchableOpacity>
 
+        {/* Apple Sign-In */}
         {(Platform.OS === 'ios' || Platform.OS === 'web') && (
-          <TouchableOpacity style={styles.socialButton}>
-            <Ionicons name="logo-apple" size={20} color="#fff" style={styles.icon} />
-            <Text style={styles.socialButtonText}>Continue with Apple</Text>
-          </TouchableOpacity>
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+            cornerRadius={8}
+            style={styles.appleButton}
+            onPress={handleAppleSignIn}
+          />
         )}
-
       </View>
     </View>
   );
-};
-
-export default SignupScreen;
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -124,15 +223,15 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#aaa',
-    marginBottom: 24,
+    marginBottom: 32,
     textAlign: 'center',
   },
   input: {
     backgroundColor: '#2a2a2a',
-    padding: 14,
+    padding: 16,
     borderRadius: 12,
     color: '#fff',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   signupButton: {
     backgroundColor: '#2a2a2a',
@@ -148,11 +247,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  or: {
-    color: '#666',
-    marginVertical: 16,
+  footerText: {
+    color: '#888',
     fontSize: 14,
+    lineHeight: 20,
     textAlign: 'center',
+    marginTop: 24,
+  },
+  linkText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+    lineHeight: 20,
   },
   socialButton: {
     backgroundColor: '#2a2a2a',
@@ -173,17 +279,15 @@ const styles = StyleSheet.create({
   icon: {
     marginLeft: 10,
   },
-  footerText: {
-    color: '#888',
+  errorText: {
+    color: 'red',
     fontSize: 14,
+    marginBottom: 8,
     textAlign: 'center',
-    marginTop: 24,
-    marginBottom: 12
   },
-  linkText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginBottom: 12
-    
+  appleButton: {
+    width: '100%',
+    height: 44,
+    marginVertical: 8,
   },
 });

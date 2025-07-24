@@ -1,17 +1,61 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Dimensions, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
 
 const { width } = Dimensions.get('window');
 
+
 const LoginScreen = () => {
   const navigation = useNavigation();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleLogin = async () => {
+    setError('');
+    if (!email || !password) {
+      setError('Please enter both email and password.');
+      return;
+    }
+    setLoading(true);
+    try {
+      // For Android emulator use: http://10.0.2.2:5000/api/login
+      // For iOS/web: http://localhost:5000/api/login
+      // For physical device: http://<your-computer-ip>:5000/api/login
+      const response = await axios.post('http://192.168.1.188:5000/api/auth/login', {
+        email,
+        password,
+      });
+      if (response.data.token) {
+        await AsyncStorage.setItem('userToken', response.data.token);
+        navigation.navigate('Home');
+      } else {
+        setError(response.data.message || 'Login failed. Please try again.');
+      }
+    } catch (err) {
+      console.log('Login error:', err);
+      // Try to show backend error message if available
+      if (axios.isAxiosError(err) && err.response && err.response.data && err.response.data.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Network error. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.card}>
         <Text style={styles.title}>Welcome to MindSync</Text>
         <Text style={styles.subtitle}>Login to continue</Text>
+
+        {error ? <Text style={{ color: 'red', marginBottom: 10, textAlign: 'center' }}>{error}</Text> : null}
 
         <TextInput
           placeholder="Email"
@@ -19,6 +63,8 @@ const LoginScreen = () => {
           style={styles.input}
           keyboardType="email-address"
           autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
         />
 
         <TextInput
@@ -26,10 +72,12 @@ const LoginScreen = () => {
           placeholderTextColor="#aaa"
           secureTextEntry
           style={styles.input}
+          value={password}
+          onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.loginButton}>
-          <Text style={styles.loginButtonText}>Log In</Text>
+        <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={loading}>
+          <Text style={styles.loginButtonText}>{loading ? 'Logging in...' : 'Log In'}</Text>
         </TouchableOpacity>
 
         <Text style={styles.or}>or</Text>
