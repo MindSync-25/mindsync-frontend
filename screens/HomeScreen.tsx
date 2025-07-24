@@ -1,6 +1,7 @@
-// src/screens/DashboardScreen.tsx
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -14,6 +15,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -22,9 +24,62 @@ type RootStackParamList = {
   Signup: undefined;
   Home: undefined;
   Profile: undefined;
+  ComingSoon: undefined;
 };
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { theme } = useTheme();
+
+  const [userSession, setUserSession] = useState({
+    userName: '',
+    userId: '',
+    email: '',
+    isLoaded: false
+  });
+
+  const dynamicStyles = StyleSheet.create({
+    container: {
+      backgroundColor: theme === 'light' ? '#fff' : '#000',
+    },
+    header: {
+      fontSize: 28,
+      color: theme === 'light' ? '#000' : '#f5f5f5',
+      fontWeight: 'bold',
+      textAlignVertical: 'center',
+      textAlign: 'left',
+    },
+    tile: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme === 'light' ? '#f5f5f5' : '#181818',
+      borderRadius: 16,
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      marginBottom: 18,
+      width: 320,
+      maxWidth: '90%',
+      borderColor: theme === 'light' ? '#e0e0e0' : '#232323',
+      borderWidth: 1,
+    },
+    card: {
+      backgroundColor: theme === 'light' ? '#f5f5f5' : '#181818',
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+    },
+    tileText: {
+      color: theme === 'light' ? '#000' : '#f5f5f5',
+      fontSize: 18,
+    },
+    micButton: {
+      marginLeft: 8,
+      backgroundColor: theme === 'light' ? '#e0e0e0' : '#232323',
+      borderRadius: 20,
+      padding: 8,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+  });
 
   // === Sample / placeholder data ===
   const tasksDue = 3;
@@ -41,26 +96,71 @@ const HomeScreen: React.FC = () => {
     'emoticon-sad-outline'
   ];
 
+  // Loads session when component mounts
+  useEffect(() => {
+    loadUserSession();
+  }, []);
+
+  // Functions to manage session
+  const loadUserSession = async () => {
+    try {
+      const sessionStr = await AsyncStorage.getItem('userSession');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        setUserSession({
+          userName: session.userName || '',
+          userId: session.userId || '',
+          email: session.email || '',
+          isLoaded: true
+        });
+      } else {
+        setUserSession((prev) => ({ ...prev, isLoaded: true }));
+      }
+    } catch (e) {
+      setUserSession((prev) => ({ ...prev, isLoaded: true }));
+    }
+  };
+
+  const saveUserSession = async (userData) => {
+    try {
+      await AsyncStorage.setItem('userSession', JSON.stringify(userData));
+      setUserSession({
+        userName: userData.userName || '',
+        userId: userData.userId || '',
+        email: userData.email || '',
+        isLoaded: true
+      });
+    } catch (e) {
+      // handle error if needed
+    }
+  };
+
   return (
-    <View style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: theme === 'light' ? '#fff' : '#000' }}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.centeredContent}>
 
           {/* Header */}
           <View style={[styles.header, styles.maxCardWidth]}>
-            <Text style={styles.greeting}>Hello!</Text>
+            <Text style={dynamicStyles.header}>
+              {userSession.isLoaded && userSession.userName ? (
+                <>
+                  Hello <Text style={styles.nameFont}>{userSession.userName.split(' ')[0]}</Text> !
+                </>
+              ) : 'Hello!'}
+            </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
-              <MaterialCommunityIcons name="account-circle" size={28} color="#f5f5f5" />
+              <MaterialCommunityIcons name="account-circle" size={28} color={theme === 'light' ? '#000' : '#f5f5f5'} />
             </TouchableOpacity>
           </View>
 
           {/* Search Bar */}
           <View style={[styles.searchBar, styles.maxCardWidth]}>
-            <MaterialCommunityIcons name="magnify" size={20} color="#888" />
+            <MaterialCommunityIcons name="magnify" size={20} color={theme === 'light' ? '#666' : '#888'} />
             <TextInput
               placeholder="Tap to search"
-              placeholderTextColor="#888"
-              style={styles.searchInput}
+              placeholderTextColor={theme === 'light' ? '#666' : '#888'}
+              style={[styles.searchInput, { color: theme === 'light' ? '#000' : '#f5f5f5' }]}
             />
           </View>
 
@@ -86,43 +186,45 @@ const HomeScreen: React.FC = () => {
           </View>
 
           {/* 2×2 Grid */}
-          <View style={[styles.grid, styles.maxCardWidth]}>
-            {/* To-Do List */}
-            <TouchableOpacity style={[styles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
-              <Text style={styles.cardTitle}>To-Do List</Text>
-              {toDoList.map((item, i) => (
-                <View key={i} style={styles.listItem}>
-                  <MaterialCommunityIcons name="checkbox-blank-outline" size={18} color="#f5f5f5" />
-                  <Text style={styles.listItemText}>{item}</Text>
+          <View style={styles.maxCardWidth}>
+            <View style={styles.grid}>
+              {/* To-Do List */}
+              <TouchableOpacity style={[styles.card, styles.gridItemLeft]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
+                <Text style={styles.cardTitle}>To-Do List</Text>
+                {toDoList.map((item, i) => (
+                  <View key={i} style={styles.listItem}>
+                    <MaterialCommunityIcons name="checkbox-blank-outline" size={18} color="#f5f5f5" />
+                    <Text style={styles.listItemText}>{item}</Text>
+                  </View>
+                ))}
+              </TouchableOpacity>
+
+              {/* Notes */}
+              <TouchableOpacity style={[styles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
+                <Text style={styles.cardTitle}>Notes</Text>
+                {notesList.map((item, i) => (
+                  <Text key={i} style={styles.listItemText}>{item}</Text>
+                ))}
+              </TouchableOpacity>
+
+              {/* Reminders */}
+              <TouchableOpacity style={[styles.card, styles.gridItemLeft]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
+                <Text style={styles.cardTitle}>Reminders</Text>
+                {remindersList.map((item, i) => (
+                  <Text key={i} style={styles.listItemText}>{item}</Text>
+                ))}
+              </TouchableOpacity>
+
+              {/* Weather */}
+              <TouchableOpacity style={[styles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
+                <Text style={styles.cardTitle}>Weather</Text>
+                <View style={styles.overviewRow}>
+                  <View style={styles.weatherCircle} />
+                  <Text style={styles.weatherText}>{`${weather.temperature}°`}</Text>
                 </View>
-              ))}
-            </TouchableOpacity>
-
-            {/* Notes */}
-            <TouchableOpacity style={[styles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
-              <Text style={styles.cardTitle}>Notes</Text>
-              {notesList.map((item, i) => (
-                <Text key={i} style={styles.listItemText}>{item}</Text>
-              ))}
-            </TouchableOpacity>
-
-            {/* Reminders */}
-            <TouchableOpacity style={[styles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
-              <Text style={styles.cardTitle}>Reminders</Text>
-              {remindersList.map((item, i) => (
-                <Text key={i} style={styles.listItemText}>{item}</Text>
-              ))}
-            </TouchableOpacity>
-
-            {/* Weather */}
-            <TouchableOpacity style={[styles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
-              <Text style={styles.cardTitle}>Weather</Text>
-              <View style={styles.overviewRow}>
-                <View style={styles.weatherCircle} />
-                <Text style={styles.weatherText}>{`${weather.temperature}°`}</Text>
-              </View>
-              <Text style={styles.listItemText}>{weather.condition}</Text>
-            </TouchableOpacity>
+                <Text style={styles.listItemText}>{weather.condition}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Suggested Actions & Mood (side by side on web, stacked on mobile) */}
@@ -169,6 +271,17 @@ const HomeScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  nameFont: {
+    fontFamily: Platform.OS === 'ios' ? 'Snell Roundhand' : Platform.OS === 'android' ? 'DancingScript-Regular' : 'cursive',
+    fontSize: 24, // Smaller or equal to Hello
+    fontWeight: '400',
+    textAlignVertical: 'center',
+    textAlign: 'left',
+    letterSpacing: 1,
+    backgroundColor: 'transparent',
+    verticalAlign: 'bottom', // Use supported value for alignment
+    alignSelf: 'baseline',
+  },
   container: Platform.select({
     web: {
       width: '100%',
@@ -189,8 +302,8 @@ const styles = StyleSheet.create({
 
   fullScroll: Platform.select({
     web: {
-      width: '100vw',
-      minHeight: '100vh',
+      width: Dimensions.get('window').width, // Fixed invalid value
+      minHeight: Dimensions.get('window').height, // Fixed invalid value
       flex: 1,
       backgroundColor: '#000',
     },
@@ -202,52 +315,105 @@ const styles = StyleSheet.create({
 
   // Removed bottomBarContainer, not needed
 
-  centeredContent: {
-    width: '100%',
-    alignItems: 'center',
-    maxWidth: 900,
+  centeredContent: Platform.select({
+    web: {
+      width: '100%',
+      alignItems: 'center',
+      maxWidth: 900,
+    },
+    default: {
+      width: '100%',
+      alignItems: 'stretch',
+    },
+  }),
+
+  header: Platform.select({
+    web: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+      width: '100%',
+      maxWidth: 900,
+      alignSelf: 'center',
+      paddingHorizontal: 0,
+    },
+    default: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+      width: '100%',
+      alignSelf: 'stretch',
+      paddingHorizontal: 0,
+      marginHorizontal: 8,
+    },
+  }),
+  greeting: {
+    fontSize: 32,
+    color: '#f5f5f5',
   },
 
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    width: '100%',
-    maxWidth: 900,
-    alignSelf: 'center',
-    paddingHorizontal: 0,
-  },
-  greeting: { fontSize: 32, color: '#f5f5f5' },
-
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#121212',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 16,
-    width: '100%',
-    maxWidth: 900,
-    alignSelf: 'center',
-  },
+  searchBar: Platform.select({
+    web: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#121212',
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginBottom: 16,
+      width: '100%',
+      maxWidth: 900,
+      alignSelf: 'center',
+    },
+    default: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#121212',
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginBottom: 16,
+      width: '100%',
+      alignSelf: 'stretch',
+      marginHorizontal: 8,
+    },
+  }),
   searchInput: { flex: 1, marginLeft: 8, color: '#f5f5f5', fontSize: 16 },
 
-  card: {
-    backgroundColor: '#1e1e1e',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    width: '100%',
-    maxWidth: 420,
-    alignSelf: 'center',
-  },
-  maxCardWidth: {
-    width: '100%',
-    maxWidth: 900,
-    alignSelf: 'center',
-  },
+  card: Platform.select({
+    web: {
+      backgroundColor: '#1e1e1e',
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 16,
+      width: '100%',
+      maxWidth: 420,
+      alignSelf: 'center',
+    },
+    default: {
+      backgroundColor: '#1e1e1e',
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 16,
+      width: '100%',
+      alignSelf: 'stretch',
+      marginHorizontal: 0,
+    },
+  }),
+  maxCardWidth: Platform.select({
+    web: {
+      width: '100%',
+      maxWidth: 900,
+      alignSelf: 'center',
+    },
+    default: {
+      width: '100%',
+      alignSelf: 'stretch',
+      marginHorizontal: 8,
+    },
+  }),
   cardTitle: { fontSize: 18, color: '#f5f5f5', marginBottom: 8 },
 
   overviewRow: { flexDirection: 'row', alignItems: 'center' },
@@ -255,42 +421,34 @@ const styles = StyleSheet.create({
 
   grid: Platform.select({
     web: {
-      flexDirection: width > 700 ? 'row' : 'column',
+      flexDirection: 'row',
       flexWrap: 'wrap',
       justifyContent: 'space-between',
+      alignItems: 'center',
       width: '100%',
-      maxWidth: 900,
       alignSelf: 'center',
+      marginTop: 0,
     },
     default: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       justifyContent: 'space-between',
+      alignItems: 'center',
       width: '100%',
-      maxWidth: 900,
       alignSelf: 'center',
       marginTop: 0,
     },
   }),
-  gridItem: Platform.select({
-    web: {
-      width: width > 700 ? (width - 64) / 2 : '100%',
-      minWidth: 260,
-      marginBottom: 16,
-      alignSelf: 'center',
-    },
-    default: {
-      width: '47%',
-      marginBottom: 16,
-      alignSelf: 'center',
-    },
-  }),
-  gridItemLeft: Platform.select({
-    web: {},
-    default: {
-      marginRight: '6%',
-    },
-  }),
+  gridItem: {
+    width: '48%',
+    marginBottom: 16,
+    alignSelf: 'center',
+  },
+
+  gridItemLeft: {
+    width: '48%',
+    marginRight: '2%',
+  },
 
   listItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   listItemText: { color: '#f5f5f5', marginLeft: 8, fontSize: 14 },
@@ -319,35 +477,32 @@ const styles = StyleSheet.create({
 
   suggestedMoodRow: Platform.select({
     web: {
-      flexDirection: width > 700 ? 'row' : 'column',
+      flexDirection: 'row',
       justifyContent: 'space-between',
+      alignItems: 'center',
       width: '100%',
       maxWidth: 900,
       alignSelf: 'center',
-      gap: 16,
+      gap: 6, // Reduced gap between widgets
     },
     default: {
       flexDirection: 'row',
       justifyContent: 'space-between',
+      alignItems: 'center',
       width: '100%',
-      maxWidth: 900,
-      alignSelf: 'center',
-      gap: 12,
+      alignSelf: 'stretch',
+      gap: 6, // Reduced gap between widgets
     },
   }),
   suggestedCard: Platform.select({
     web: {
-      flex: 1,
-      marginRight: width > 700 ? 8 : 0,
-      marginBottom: width > 700 ? 0 : 16,
-      minWidth: 260,
-      maxWidth: 420,
+      width: '48%', // Match the width of gridItem and gridItemLeft
+      marginRight: '2%', // Reduced margin to decrease gap
+      marginBottom: 0,
     },
     default: {
-      width: '48%',
-      minWidth: 120,
-      maxWidth: '48%',
-      marginRight: '4%',
+      width: '48%', // Match the width of gridItem and gridItemLeft
+      marginRight: '2%', // Reduced margin to decrease gap
       marginBottom: 0,
     },
   }),
@@ -383,28 +538,44 @@ const styles = StyleSheet.create({
       left: 0,
       right: 0,
       bottom: 32,
-      alignItems: 'center',
+      alignItems: 'stretch',
       width: '100%',
       zIndex: 10,
       backgroundColor: 'transparent',
       paddingBottom: 8,
     },
   }),
-  bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    backgroundColor: 'transparent',
-    borderTopWidth: 0,
-    borderTopColor: 'transparent',
-    width: '100%',
-    maxWidth: 900,
-    alignSelf: 'center',
-    borderRadius: 0,
-    marginHorizontal: 8,
-    gap: 12,
-  },
+  bottomBar: Platform.select({
+    web: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      backgroundColor: 'transparent',
+      borderTopWidth: 0,
+      borderTopColor: 'transparent',
+      width: '100%',
+      maxWidth: 900,
+      alignSelf: 'center',
+      borderRadius: 0,
+      marginHorizontal: 8,
+      gap: 12,
+    },
+    default: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      backgroundColor: 'transparent',
+      borderTopWidth: 0,
+      borderTopColor: 'transparent',
+      width: '100%',
+      alignSelf: 'stretch',
+      borderRadius: 0,
+      marginHorizontal: 8,
+      gap: 12,
+    },
+  }),
   bottomInput: {
     flex: 1,
     color: '#f5f5f5',

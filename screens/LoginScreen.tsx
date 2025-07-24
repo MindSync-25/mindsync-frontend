@@ -31,7 +31,16 @@ const LoginScreen = () => {
         password,
       });
       if (response.data.token) {
+        // Save token for authentication
         await AsyncStorage.setItem('userToken', response.data.token);
+        
+        // Save user session data for HomeScreen
+        await AsyncStorage.setItem('userSession', JSON.stringify({
+          userName: response.data.user?.name || response.data.user?.fullName || 'User',
+          userId: response.data.user?.id || response.data.user?._id || '',
+          email: response.data.user?.email || email
+        }));
+        console.log('Login response:', response.data);
         navigation.navigate('Home');
       } else {
         setError(response.data.message || 'Login failed. Please try again.');
@@ -112,7 +121,7 @@ export default LoginScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#000', // Always dark mode
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
