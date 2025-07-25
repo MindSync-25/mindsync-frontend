@@ -8,6 +8,8 @@ import SignupScreen from '../screens/SignupScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ComingSoonScreen from '../screens/ComingSoonScreen';
+import TaskManagementScreen from '../screens/TaskManagementScreen';
+import TaskDetailScreen from '../screens/TaskDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -46,6 +48,8 @@ const AppNavigator = () => {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
+        <Stack.Screen name="TaskManagement" component={TaskManagementScreen} options={{ title: 'Tasks' }} />
+<Stack.Screen name="TaskDetail" component={TaskDetailScreen} options={{ title: 'Task Details' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

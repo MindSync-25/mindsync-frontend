@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "7c30e95d-447c-495a-b882-8eb7f76157f7"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.anilbhavanam.mindsync",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}
