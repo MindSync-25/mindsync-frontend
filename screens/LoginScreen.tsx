@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import * as AuthSession from 'expo-auth-session';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Dimensions, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,12 +10,21 @@ import axios from 'axios';
 const { width } = Dimensions.get('window');
 
 
+type RootStackParamList = {
+  Login: undefined;
+  Signup: undefined;
+  Home: undefined;
+  Profile: undefined;
+  ComingSoon: undefined;
+};
+
 const LoginScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleLogin = async () => {
     setError('');
@@ -58,6 +69,76 @@ const LoginScreen = () => {
     }
   };
 
+  // Google Login Handler
+  // Google OAuth config
+  const clientId = '7201600018-un5ho48dggcpgfqr2hthckv6p5cpf131.apps.googleusercontent.com';
+
+  const discovery = {
+    authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenEndpoint: 'https://oauth2.googleapis.com/token',
+    revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
+  };
+
+  const [request, response, promptAsync] = AuthSession.useAuthRequest({
+    clientId,
+    redirectUri: AuthSession.makeRedirectUri({}),
+    scopes: ['profile', 'email'],
+    responseType: AuthSession.ResponseType.Token,
+    usePKCE: false,
+  }, discovery);
+
+  React.useEffect(() => {
+    const handleGoogleResponse = async () => {
+      if (response?.type === 'success' && response.params?.id_token) {
+        setGoogleLoading(true);
+        try {
+          const backendResponse = await axios.post('http://192.168.1.188:5000/api/auth/googleLogin', {
+            idToken: response.params.id_token,
+          });
+          if (backendResponse.data.token) {
+            await AsyncStorage.setItem('userToken', backendResponse.data.token);
+            await AsyncStorage.setItem('userSession', JSON.stringify({
+              userName: backendResponse.data.user?.name || backendResponse.data.user?.fullName || 'User',
+              userId: backendResponse.data.user?.id || backendResponse.data.user?._id || '',
+              email: backendResponse.data.user?.email || '',
+            }));
+            console.log('Google login response:', backendResponse.data);
+            navigation.navigate('Home');
+          } else {
+            setError(backendResponse.data.message || 'Google login failed. Please try again.');
+          }
+        } catch (err) {
+          // Log full error for debugging
+          if (axios.isAxiosError(err)) {
+            if (err.response) {
+              console.log('Google login error response:', err.response);
+              setError('Google login error: ' + (err.response.data?.message || err.message));
+            } else if (err.request) {
+              console.log('Google login error request:', err.request);
+              setError('Google login request error: Could not reach backend. Check network and CORS.');
+            } else {
+              console.log('Google login error:', err.message);
+              setError('Google login error: ' + err.message);
+            }
+          } else {
+            console.log('Google login error:', err);
+            setError('Network error. Please try again.');
+          }
+        } finally {
+          setGoogleLoading(false);
+        }
+      }
+    };
+    handleGoogleResponse();
+  }, [response]);
+
+  const handleGoogleLogin = async () => {
+    setError('');
+    setGoogleLoading(true);
+    await promptAsync();
+    setGoogleLoading(false);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.card}>
@@ -92,9 +173,9 @@ const LoginScreen = () => {
         <Text style={styles.or}>or</Text>
 
         {/* Google Login */}
-        <TouchableOpacity style={styles.socialButton}>
+        <TouchableOpacity style={styles.socialButton} onPress={handleGoogleLogin} disabled={googleLoading}>
           <Ionicons name="logo-google" size={20} color="#fff" style={styles.icon} />
-          <Text style={styles.socialButtonText}>Continue with Google</Text>
+          <Text style={styles.socialButtonText}>{googleLoading ? 'Logging in...' : 'Continue with Google'}</Text>
         </TouchableOpacity>
 
         {/* Apple Login (iOS + web visible) */}

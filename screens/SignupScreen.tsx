@@ -90,7 +90,7 @@ export default function SignupScreen() {
   const handleSignup = async () => {
     try {
       console.log('Signup button pressed');
-      const res = await axios.post('http://192.168.1.188:5000/api/auth/register', {
+      const res = await axios.post('http://localhost:5000/api/auth/register', {
         name,
         email,
         password,
