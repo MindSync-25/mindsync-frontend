@@ -5,6 +5,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AppNavigator from './navigation/AppNavigator';
 import { ThemeProvider } from './context/ThemeContext';
 import { TaskProvider } from './context/TaskContext';
+import { WeatherProvider } from './context/WeatherContext';
+import { NewsProvider } from './context/NewsContext';
 
 // Hide scrollbar on web
 if (typeof window !== 'undefined') {
@@ -16,7 +18,11 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
         <TaskProvider>
-          <AppNavigator />
+          <WeatherProvider>
+            <NewsProvider>
+              <AppNavigator />
+            </NewsProvider>
+          </WeatherProvider>
         </TaskProvider>
       </ThemeProvider>
     </GestureHandlerRootView>

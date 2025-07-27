@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   View,
   Text,
@@ -20,8 +21,15 @@ console.log('EXPO Redirect URI:', AuthSession.makeRedirectUri({ useProxy: true }
 const GOOGLE_CLIENT_ID = '7201600018-un5ho48dggcpgfqr2hthckv6p5cpf131.apps.googleusercontent.com';
 const { width } = Dimensions.get('window');
 
+type RootStackParamList = {
+  Login: undefined;
+  Signup: undefined;
+  Home: undefined;
+  NewsInterestsOnboarding: undefined;
+};
+
 export default function SignupScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,11 +65,11 @@ export default function SignupScreen() {
       axios
         .post('http://192.168.1.188:5000/api/auth/google', { idToken })
         .then((res) => {
-          Alert.alert('Success', res.data.message || 'Logged in with Google');
-          navigation.navigate('Login');
+          Alert.alert('Success', res.data.message || 'Signed up with Google');
+          navigation.navigate('NewsInterestsOnboarding');
         })
         .catch((err) => {
-          console.error('Google login error', err);
+          console.error('Google signup error', err);
           Alert.alert('Error', err.response?.data?.message || err.message);
         });
     }
@@ -78,8 +86,8 @@ export default function SignupScreen() {
       });
       const identityToken = credential.identityToken;
       const res = await axios.post('http://192.168.1.188:5000/api/auth/apple', { identityToken });
-      Alert.alert('Success', res.data.message || 'Logged in with Apple');
-      navigation.navigate('Login');
+      Alert.alert('Success', res.data.message || 'Signed up with Apple');
+      navigation.navigate('NewsInterestsOnboarding');
     } catch (err: any) {
       console.error('Apple login error', err);
       Alert.alert('Error', err.response?.data?.message || err.message);
@@ -98,7 +106,7 @@ export default function SignupScreen() {
       });
       Alert.alert('Success', res.data.message);
       setErrorMessage('');
-      navigation.navigate('Login');
+      navigation.navigate('NewsInterestsOnboarding');
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Signup failed';
       console.log('Signup error FULL:', JSON.stringify(err.response?.data, null, 2));

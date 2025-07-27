@@ -1,9 +1,12 @@
 import React from 'react';
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../context/ThemeContext';
+import { useTasks } from '../context/TaskContext';
 
 const profileOptions: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string }[] = [
   { icon: 'account-edit', label: 'Edit Profile' },
@@ -24,6 +27,7 @@ type RootStackParamList = {
 const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { theme, toggleTheme } = useTheme();
+  const { clearAllTasks } = useTasks();
 
   const dynamicStyles = StyleSheet.create({
     container: {
@@ -60,6 +64,17 @@ const ProfileScreen: React.FC = () => {
     },
   });
 
+  // Logout handler
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('userSession');
+      clearAllTasks(); // Clear all tasks from context
+      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+    } catch (e) {
+      // handle error if needed
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={dynamicStyles.container}>
       <View style={styles.headerRow}>
@@ -68,25 +83,32 @@ const ProfileScreen: React.FC = () => {
           <MaterialCommunityIcons name="close" size={28} color={theme === 'light' ? '#000' : '#f5f5f5'} />
         </TouchableOpacity>
       </View>
-      {profileOptions.map((option, idx) => (
-        <TouchableOpacity
-          key={idx}
-          style={dynamicStyles.option}
-          onPress={() => {
-            if (option.label === 'Theme & Appearance') {
-              toggleTheme();
-              return;
-            }
-            navigation.navigate('ComingSoon');
-          }}
-        >
-          <MaterialCommunityIcons name={option.icon} size={24} color={theme === 'light' ? '#000' : '#f5f5f5'} />
-          <Text style={dynamicStyles.label}>{option.label}</Text>
-          {option.label === 'Theme & Appearance' && (
-            <Text style={styles.themeLabel}>{theme === 'light' ? 'Light Mode' : 'Dark Mode'}</Text>
-          )}
-        </TouchableOpacity>
-      ))}
+      {profileOptions.map((option, idx) => {
+        const label = option.label.trim().toLowerCase();
+        return (
+          <TouchableOpacity
+            key={idx}
+            style={dynamicStyles.option}
+            onPress={() => {
+              if (label === 'theme & appearance') {
+                toggleTheme();
+                return;
+              }
+              if (label === 'logout') {
+                handleLogout();
+                return;
+              }
+              navigation.navigate('ComingSoon');
+            }}
+          >
+            <MaterialCommunityIcons name={option.icon} size={24} color={theme === 'light' ? '#000' : '#f5f5f5'} />
+            <Text style={dynamicStyles.label}>{option.label}</Text>
+            {label === 'theme & appearance' && (
+              <Text style={styles.themeLabel}>{theme === 'light' ? 'Light Mode' : 'Dark Mode'}</Text>
+            )}
+          </TouchableOpacity>
+        );
+      })}
     </ScrollView>
   );
 };

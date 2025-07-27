@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import * as DocumentPicker from 'expo-document-picker';
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, ScrollView } from 'react-native';
 // Platform is already imported above
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -36,6 +37,8 @@ const TaskModal: React.FC<Props> = ({ visible, onClose, editingTask, onSave }) =
   const [aiConfidence, setAiConfidence] = useState<number | undefined>(undefined);
   const [sourceText, setSourceText] = useState('');
   const { theme } = useTheme();
+  // Validation error for date logic
+  const [dateError, setDateError] = useState('');
 
   useEffect(() => {
     if (editingTask) {
@@ -97,7 +100,25 @@ const TaskModal: React.FC<Props> = ({ visible, onClose, editingTask, onSave }) =
   }, [editingTask, visible]);
 
   const handleSave = () => {
+    setDateError('');
     if (!title.trim()) return;
+    // Validation: due date must not be before today
+    if (dueDateObj) {
+      const now = new Date();
+      // Remove seconds/milliseconds for comparison
+      now.setSeconds(0, 0);
+      if (dueDateObj < now) {
+        setDateError('Due date/time cannot be before today.');
+        return;
+      }
+    }
+    // Validation: due date must be after reminder
+    if (dueDateObj && reminderObj) {
+      if (dueDateObj <= reminderObj) {
+        setDateError('Reminder date/time must be after the Due time.');
+        return;
+      }
+    }
     // Map frontend status/priority to backend format (lowercase)
     const status = (editingTask?.status || 'Pending').toLowerCase();
     const priorityBackend = priority.toLowerCase();
@@ -129,6 +150,29 @@ const TaskModal: React.FC<Props> = ({ visible, onClose, editingTask, onSave }) =
 
   const addAttachment = (type: 'file' | 'link', value: string) => {
     setAttachments([...attachments, { type, value }]);
+  };
+
+  const pickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        addAttachment('file', file.name);
+      }
+    } catch (error) {
+      console.error('Error picking file:', error);
+    }
+  };
+
+  const addLink = () => {
+    const link = prompt('Paste link:');
+    if (link) {
+      addAttachment('link', link);
+    }
   };
 
   return (
@@ -164,6 +208,10 @@ const TaskModal: React.FC<Props> = ({ visible, onClose, editingTask, onSave }) =
                 </TouchableOpacity>
               ))}
             </View>
+            {/* Date validation error */}
+            {dateError ? (
+              <Text style={{ color: 'red', marginBottom: 4, fontSize: 13 }}>{dateError}</Text>
+            ) : null}
             {/* Due Date Picker - Cross Platform */}
             {Platform.OS === 'web' ? (
               <div style={{ marginBottom: 12 }}>
@@ -288,10 +336,10 @@ const TaskModal: React.FC<Props> = ({ visible, onClose, editingTask, onSave }) =
             {/* Attachments: file and link */}
             <View style={styles.row}>
               <Text style={[styles.label, theme === 'light' && { color: '#000' }]}>Attachments:</Text>
-              <TouchableOpacity onPress={() => addAttachment('link', prompt('Paste link:') || '')}>
+              <TouchableOpacity onPress={addLink}>
                 <Ionicons name="link" size={22} color={theme === 'light' ? '#007AFF' : '#007AFF'} style={{ marginHorizontal: 8 }} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => addAttachment('file', prompt('Paste file URL:') || '')}>
+              <TouchableOpacity onPress={pickFile}>
                 <Ionicons name="attach" size={22} color={theme === 'light' ? '#007AFF' : '#007AFF'} style={{ marginHorizontal: 8 }} />
               </TouchableOpacity>
             </View>

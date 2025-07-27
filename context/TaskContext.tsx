@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as taskApi from '../services/taskApi';
 
 export type TaskPriority = 'Low' | 'Medium' | 'High';
@@ -28,12 +29,15 @@ interface TaskState {
 type Action =
   | { type: 'ADD_TASK'; task: Task }
   | { type: 'UPDATE_TASK'; task: Task }
-  | { type: 'DELETE_TASK'; id: string };
+  | { type: 'DELETE_TASK'; id: string }
+  | { type: 'CLEAR_ALL_TASKS' };
 
 const TaskContext = createContext<{
   state: TaskState;
   dispatch: React.Dispatch<Action>;
-}>({ state: { tasks: [] }, dispatch: () => {} });
+  clearAllTasks: () => void;
+  reloadTasks: () => Promise<void>;
+}>({ state: { tasks: [] }, dispatch: () => {}, clearAllTasks: () => {}, reloadTasks: async () => {} });
 
 function taskReducer(state: TaskState, action: Action): TaskState {
   switch (action.type) {
@@ -46,6 +50,8 @@ function taskReducer(state: TaskState, action: Action): TaskState {
       };
     case 'DELETE_TASK':
       return { ...state, tasks: state.tasks.filter(t => t.id !== action.id) };
+    case 'CLEAR_ALL_TASKS':
+      return { ...state, tasks: [] };
     default:
       return state;
   }
@@ -55,20 +61,48 @@ function taskReducer(state: TaskState, action: Action): TaskState {
 export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(taskReducer, { tasks: [] });
 
-  // Load tasks from backend on mount
+  // Clear all tasks function
+  const clearAllTasks = () => {
+    dispatch({ type: 'CLEAR_ALL_TASKS' });
+  };
+
+  // Load tasks from backend
+  const loadTasks = async () => {
+    try {
+      const tasks = await taskApi.fetchTasks();
+      if (Array.isArray(tasks)) {
+        // Clear existing tasks first
+        dispatch({ type: 'CLEAR_ALL_TASKS' });
+        // Add new tasks
+        tasks.forEach(task => {
+          dispatch({ type: 'ADD_TASK', task });
+        });
+      }
+    } catch (e) {
+      // Optionally handle error
+    }
+  };
+
+  // Watch for user session changes and reload tasks
   useEffect(() => {
-    (async () => {
+    const checkAndLoadTasks = async () => {
       try {
-        const tasks = await taskApi.fetchTasks();
-        if (Array.isArray(tasks)) {
-          tasks.forEach(task => {
-            dispatch({ type: 'ADD_TASK', task });
-          });
+        const sessionStr = await AsyncStorage.getItem('userSession');
+        if (sessionStr) {
+          const session = JSON.parse(sessionStr);
+          if (session.userId) {
+            await loadTasks();
+          }
+        } else {
+          dispatch({ type: 'CLEAR_ALL_TASKS' });
         }
       } catch (e) {
-        // Optionally handle error
+        // Handle error
       }
-    })();
+    };
+
+    // Load tasks immediately when TaskProvider mounts
+    checkAndLoadTasks();
   }, []);
 
   // Wrap dispatch to sync with backend
@@ -111,7 +145,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <TaskContext.Provider value={{ state, dispatch: enhancedDispatch }}>
+    <TaskContext.Provider value={{ state, dispatch: enhancedDispatch, clearAllTasks, reloadTasks: loadTasks }}>
       {children}
     </TaskContext.Provider>
   );
