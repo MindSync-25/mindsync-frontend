@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { Task, TaskStatus } from '../context/TaskContext';
 import { useTheme } from '../context/ThemeContext';
+import { toggleTaskCompletion } from '../services/taskApi';
 
 interface Props {
   task: Task;
@@ -16,13 +18,65 @@ const priorityColors = { Low: '#4CAF50', Medium: '#FFC107', High: '#F44336' };
 
 const TaskItem: React.FC<Props> = ({ task, onEdit, onStatusChange, isOverdue }) => {
   const { theme } = useTheme();
+  const navigation = useNavigation();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Auto-clear error message after 5 seconds
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => {
+        setErrorMessage(null);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+  
   const titleColor = theme === 'light' ? '#222' : '#fff';
+  
   const nextStatus = () => {
     // Simple toggle: if completed, go back to pending; otherwise go to completed
     if (task.status === 'completed') {
       return 'pending';
     } else {
       return 'completed';
+    }
+  };
+
+  const handleTaskPress = () => {
+    // Navigate to TaskDetail screen with the task object
+    (navigation as any).navigate('TaskDetail', { task });
+  };
+
+  const handleStatusCirclePress = async () => {
+    // Clear any previous error message
+    setErrorMessage(null);
+    
+    try {
+      const updatedTask = await toggleTaskCompletion(task);
+      // Map isCompleted to correct status
+      const newStatus = updatedTask.isCompleted ? 'completed' : 'pending';
+      console.log('🔄 TaskItem: Setting status to', newStatus, 'based on isCompleted:', updatedTask.isCompleted);
+      onStatusChange(newStatus);
+    } catch (error: any) {
+      console.log('🚨 TaskItem error details:', error);
+      console.log('🚨 Error response:', error?.response);
+      console.log('🚨 Error response data:', error?.response?.data);
+      
+      // Get error message from new backend format
+      const backendMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message || 'Unknown error';
+      console.log('🚨 Backend message:', backendMsg);
+      
+      // Set error message to display above the task
+      if (error?.response?.status === 400 && (!error?.response?.data || error?.response?.data === '')) {
+        setErrorMessage('This task cannot be completed because it depends on other tasks that are not completed yet.');
+      } else if (backendMsg && (backendMsg.includes('dependencies') || backendMsg.includes('Cannot complete'))) {
+        setErrorMessage(backendMsg);
+      } else if (error?.response?.status === 400) {
+        setErrorMessage(backendMsg || 'This task has incomplete dependencies or cannot be completed at this time.');
+      } else {
+        setErrorMessage(backendMsg || 'Failed to update task status');
+      }
     }
   };
 
@@ -50,17 +104,23 @@ const TaskItem: React.FC<Props> = ({ task, onEdit, onStatusChange, isOverdue }) 
   ];
 
   return (
-    <View style={itemStyle}>
-      <View style={styles.left}>
-        <TouchableOpacity
-          style={[styles.statusCircle, { borderColor: isOverdue ? '#F44336' : priorityColors[task.priority], backgroundColor: statusCircleBg }]}
-          onPress={() => onStatusChange(nextStatus())}
-        >
-          {task.status === 'completed' ? (
-            <Ionicons name="checkmark" size={18} color={isOverdue ? '#F44336' : priorityColors[task.priority]} />
-          ) : null}
-        </TouchableOpacity>
-        <View>
+    <View>
+      {/* Error Message Display - Plain text above widget */}
+      {errorMessage && (
+        <Text style={styles.errorText}>{errorMessage}</Text>
+      )}
+      
+      <View style={itemStyle}>
+        <View style={styles.left}>
+          <TouchableOpacity
+            style={[styles.statusCircle, { borderColor: isOverdue ? '#F44336' : priorityColors[task.priority], backgroundColor: statusCircleBg }]}
+            onPress={handleStatusCirclePress}
+          >
+            {task.status === 'completed' ? (
+              <Ionicons name="checkmark" size={18} color={isOverdue ? '#F44336' : priorityColors[task.priority]} />
+            ) : null}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.taskContent} onPress={handleTaskPress}>
           <Text style={[styles.title, { color: titleColor }]}>{task.title}</Text>
           {isOverdue && (
             <Text style={[styles.overdueText]}>OVERDUE</Text>
@@ -73,15 +133,14 @@ const TaskItem: React.FC<Props> = ({ task, onEdit, onStatusChange, isOverdue }) 
                 {' '}• Due: {formatDateForDisplay(task.dueDate)}
               </Text>
             )}
-          {/* ...existing code... */}
-
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
       <View style={styles.right}>
         <TouchableOpacity onPress={onEdit}>
           <MaterialCommunityIcons name="pencil" size={20} color="#aaa" />
         </TouchableOpacity>
+      </View>
       </View>
     </View>
   );
@@ -100,6 +159,9 @@ const styles = StyleSheet.create({
   left: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  taskContent: {
     flex: 1,
   },
   statusCircle: {
@@ -141,6 +203,14 @@ const styles = StyleSheet.create({
   },
   right: {
     marginLeft: 8,
+  },
+  errorText: {
+    color: '#f44336',
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+    textAlign: 'center',
+    alignSelf: 'center',
   },
 });
 

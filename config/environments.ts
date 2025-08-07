@@ -3,25 +3,28 @@ import { Platform } from 'react-native';
 
 const environments = {
   development: {
-    API_BASE_URL: 'http://localhost:5000', // Backend Copilot's local server
-    UPLOAD_ENDPOINT: 'http://localhost:5000/api/upload',
-    WS_URL: 'ws://localhost:5000/ws',
+    API_BASE_URL: 'http://localhost:8081', // ✅ SPRING BOOT BACKEND
+    UPLOAD_ENDPOINT: 'http://localhost:8081/api/upload',
+    WS_URL: 'ws://localhost:8081/ws',
     AWS_REGION: 'us-east-1',
     ENVIRONMENT: 'development',
   },
   staging: {
-    API_BASE_URL: 'https://staging-api.mindsync.app',
-    UPLOAD_ENDPOINT: 'https://staging-api.mindsync.app/api/upload',
-    WS_URL: 'wss://staging-api.mindsync.app/ws',
+    API_BASE_URL: 'http://localhost:8081', // ✅ FOR NOW, USE SPRING BOOT
+    UPLOAD_ENDPOINT: 'http://localhost:8081/api/upload',
+    WS_URL: 'ws://localhost:8081/ws',
     AWS_REGION: 'us-east-1',
     ENVIRONMENT: 'staging',
   },
   production: {
-    API_BASE_URL: 'https://api.mindsync.app',
-    UPLOAD_ENDPOINT: 'https://api.mindsync.app/api/upload',
-    WS_URL: 'wss://api.mindsync.app/ws',
+    API_BASE_URL: 'http://localhost:8081', // ✅ SPRING BOOT LOCAL FOR NOW
+    UPLOAD_ENDPOINT: 'http://localhost:8081/api/upload',
+    WS_URL: 'ws://localhost:8081/ws',
     AWS_REGION: 'us-east-1',
     ENVIRONMENT: 'production',
+    DEPLOYMENT_PLATFORM: 'local-spring-boot',
+    STATUS: 'SPRING_BOOT_INTEGRATION',
+    VERSION: 'SPRING_BOOT_V1'
   }
 };
 

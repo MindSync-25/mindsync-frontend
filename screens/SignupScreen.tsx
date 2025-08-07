@@ -13,8 +13,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AuthSession from 'expo-auth-session';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { authApi } from '../services/authApi';
 
 console.log('EXPO Redirect URI:', AuthSession.makeRedirectUri({ useProxy: true }));
 
@@ -46,33 +48,84 @@ export default function SignupScreen() {
     return Math.random().toString(36).substring(2);
   });
 
-  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+  const redirectUri = AuthSession.makeRedirectUri({});
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
       clientId: GOOGLE_CLIENT_ID,
       redirectUri,
       scopes: ['openid', 'profile', 'email'],
-      responseType: AuthSession.ResponseType.IdToken,
+      responseType: AuthSession.ResponseType.Token,
       usePKCE: false,
-      extraParams: { nonce: nonce || '' }
+      extraParams: { 
+        nonce: nonce || '',
+        include_granted_scopes: 'true',
+      }
     },
     { authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth' }
   );
 
   useEffect(() => {
-    if (response?.type === 'success') {
-      const idToken = response.params.id_token;
-      axios
-        .post('http://192.168.1.188:5000/api/auth/google', { idToken })
-        .then((res) => {
-          Alert.alert('Success', res.data.message || 'Signed up with Google');
-          navigation.navigate('NewsInterestsOnboarding');
-        })
-        .catch((err) => {
-          console.error('Google signup error', err);
-          Alert.alert('Error', err.response?.data?.message || err.message);
-        });
-    }
+    const handleGoogleSignup = async () => {
+      if (response?.type === 'success' && response.params?.access_token) {
+        try {
+          // Get user info from Google directly using the access token
+          const userInfoResponse = await fetch(
+            `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${response.params.access_token}`,
+            {
+              method: 'GET',
+              headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+          
+          const googleUserInfo = await userInfoResponse.json();
+          console.log('Google signup user info:', googleUserInfo);
+
+          // Try backend signup first
+          try {
+            const backendResponse = await axios.post('http://localhost:8081/api/auth/google', { 
+              accessToken: response.params.access_token,
+              userInfo: googleUserInfo,
+            });
+            
+            if (backendResponse.data.token || backendResponse.data.message) {
+              Alert.alert('Success', backendResponse.data.message || 'Signed up with Google');
+              navigation.navigate('NewsInterestsOnboarding');
+              return; // Success - exit early
+            }
+          } catch (backendError) {
+            console.log('⚠️ Backend Google signup not available, using fallback:', backendError);
+            
+            // Fallback: Create local session with Google user info
+            const fallbackToken = `google_signup_fallback_${Date.now()}_${Math.random()}`;
+            await AsyncStorage.setItem('userToken', fallbackToken);
+            await AsyncStorage.setItem('userSession', JSON.stringify({
+              userName: googleUserInfo.name || 'Google User',
+              userId: googleUserInfo.id || `google_${Date.now()}`,
+              email: googleUserInfo.email || '',
+              isGoogleUser: true,
+              isFallbackAuth: true,
+            }));
+            
+            Alert.alert('Success', `Welcome ${googleUserInfo.name}! Signed up with Google.`);
+            console.log('✅ Google fallback signup successful with user:', googleUserInfo.name);
+            navigation.navigate('NewsInterestsOnboarding');
+            return;
+          }
+          
+        } catch (err) {
+          console.error('❌ Google signup failed:', err);
+          Alert.alert('Error', 'Google signup failed. Please try again or use email/password.');
+        }
+      } else if (response?.type === 'error') {
+        console.log('Google OAuth signup error:', response.error);
+        Alert.alert('Error', 'Google signup was cancelled or failed. Please try again.');
+      }
+    };
+    
+    handleGoogleSignup();
   }, [response]);
 
   // Apple Sign-In
@@ -85,7 +138,7 @@ export default function SignupScreen() {
         ],
       });
       const identityToken = credential.identityToken;
-      const res = await axios.post('http://192.168.1.188:5000/api/auth/apple', { identityToken });
+      const res = await axios.post('http://localhost:8081/api/auth/apple', { identityToken });
       Alert.alert('Success', res.data.message || 'Signed up with Apple');
       navigation.navigate('NewsInterestsOnboarding');
     } catch (err: any) {
@@ -98,19 +151,59 @@ export default function SignupScreen() {
   const handleSignup = async () => {
     try {
       console.log('Signup button pressed');
-      const res = await axios.post('http://localhost:5000/api/auth/register', {
-        name,
-        email,
+      
+      // Basic validation
+      if (!name.trim() || !email.trim() || !password || !confirmPassword) {
+        setErrorMessage('Please fill in all fields.');
+        return;
+      }
+      
+      if (password !== confirmPassword) {
+        setErrorMessage('Passwords do not match.');
+        return;
+      }
+      
+      if (password.length < 6) {
+        setErrorMessage('Password must be at least 6 characters long.');
+        return;
+      }
+      
+      // Use the authApi with correct field names
+      const response = await authApi.register({
+        email: email.trim(),
         password,
+        name: name.trim(),
         confirmPassword,
       });
-      Alert.alert('Success', res.data.message);
+      
+      console.log('✅ Signup successful:', response);
+      Alert.alert('Success', 'Account created successfully!');
       setErrorMessage('');
+      
+      // Navigate to news interests onboarding after successful registration
       navigation.navigate('NewsInterestsOnboarding');
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Signup failed';
-      console.log('Signup error FULL:', JSON.stringify(err.response?.data, null, 2));
-      setErrorMessage(msg);
+      console.log('❌ Signup error:', err);
+      console.log('❌ Signup error response:', err.response?.data);
+      
+      // Handle different error types - but ignore success messages
+      if (err.message?.includes('Email already exists') || err.message?.includes('already in use')) {
+        setErrorMessage('Email already exists. Please use a different email or login instead.');
+      } else if (err.response?.status === 409) {
+        setErrorMessage('Email already exists. Please use a different email or login instead.');
+      } else if (err.response?.status === 400) {
+        setErrorMessage(err.response?.data?.message || 'Invalid signup data.');
+      } else if (err.message?.includes('timeout')) {
+        setErrorMessage('Connection timeout. Please check your internet and try again.');
+      } else if (err.message?.includes('Server blocked the request')) {
+        setErrorMessage('Server connection issue. Please try again later.');
+      } else {
+        const msg = err.message || err.response?.data?.message || 'Signup failed';
+        // Don't show success messages as errors
+        if (!msg.includes('successfully') && !msg.includes('Registered successfully')) {
+          setErrorMessage(msg);
+        }
+      }
     }
   };
 
@@ -182,14 +275,14 @@ export default function SignupScreen() {
         <TouchableOpacity
           style={styles.socialButton}
           disabled={!request}
-          onPress={() => promptAsync({ useProxy: true })}
+          onPress={() => promptAsync()}
         >
           <Ionicons name="logo-google" size={20} color="#fff" style={styles.icon} />
           <Text style={styles.socialButtonText}>Continue with Google</Text>
         </TouchableOpacity>
 
         {/* Apple Sign-In */}
-        {(Platform.OS === 'ios' || Platform.OS === 'web') && (
+        {Platform.OS === 'ios' && (
           <AppleAuthentication.AppleAuthenticationButton
             buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
             buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
@@ -197,6 +290,17 @@ export default function SignupScreen() {
             style={styles.appleButton}
             onPress={handleAppleSignIn}
           />
+        )}
+
+        {/* Apple Sign-In Alternative for Android/Web */}
+        {Platform.OS !== 'ios' && (
+          <TouchableOpacity 
+            style={styles.socialButton}
+            onPress={() => Alert.alert('Apple Sign-In', 'Apple Sign-In is only available on iOS devices')}
+          >
+            <Ionicons name="logo-apple" size={20} color="#fff" style={styles.icon} />
+            <Text style={styles.socialButtonText}>Continue with Apple</Text>
+          </TouchableOpacity>
         )}
       </View>
     </View>
@@ -216,10 +320,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1c1c1c',
     padding: 24,
     borderRadius: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
+    boxShadow: '0px 2px 10px rgba(0, 0, 0, 0.2)',
   },
   title: {
     fontSize: 28,

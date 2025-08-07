@@ -1,5 +1,4 @@
 import React from 'react';
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,6 +13,8 @@ const profileOptions: { icon: keyof typeof MaterialCommunityIcons.glyphMap; labe
   { icon: 'bell-outline', label: 'Notification Settings' },
   { icon: 'palette-outline', label: 'Theme & Appearance' },
   { icon: 'shield-account-outline', label: 'Privacy & Security' },
+  { icon: 'chart-line', label: 'Analytics & Insights' },
+  { icon: 'timer-outline', label: 'Time Tracking' },
   { icon: 'logout', label: 'Logout' },
 ];
 

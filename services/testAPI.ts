@@ -80,6 +80,40 @@ export const testAPI = {
     }
   },
 
+  // Tasks API Test: Fetch all tasks
+  async testFetchTasks() {
+    console.log('📋 Testing Fetch Tasks...');
+    try {
+      const response = await apiClient.get('/tasks');
+      console.log('✅ Fetch Tasks:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Fetch Tasks Failed:', error.message);
+      throw error;
+    }
+  },
+
+  // Tasks API Test: Create a new task
+  async testCreateTask() {
+    console.log('✍️ Testing Create Task...');
+    try {
+      const taskData = {
+        title: 'API Test Task',
+        description: 'This task is created by testAPI',
+        priority: 'medium',
+        dueDate: new Date().toISOString(),
+        isCompleted: false,
+        dependsOn: []
+      };
+      const response = await apiClient.post('/tasks', taskData);
+      console.log('✅ Create Task:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Create Task Failed:', error.message);
+      throw error;
+    }
+  },
+
   // Run All Tests
   async runAllTests() {
     console.log('🚀 STARTING COMPREHENSIVE API TESTING...\n');
@@ -89,6 +123,8 @@ export const testAPI = {
       auth: null,
       news: null,
       weather: null,
+      tasksFetch: null,
+      tasksCreate: null,
       success: false
     };
 
@@ -104,6 +140,12 @@ export const testAPI = {
       
       // Test Weather
       results.weather = await this.testWeather();
+      
+      // Test Fetch Tasks
+      results.tasksFetch = await this.testFetchTasks();
+      
+      // Test Create Task
+      results.tasksCreate = await this.testCreateTask();
       
       results.success = true;
       console.log('\n🎉 ALL API TESTS PASSED! LEGENDARY BACKEND IS READY! 🔥');

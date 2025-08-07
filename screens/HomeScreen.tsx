@@ -33,6 +33,7 @@ type RootStackParamList = {
   TaskManagement: undefined;
   NewsFeed: { currentMood: string; isTriggeredByMood: boolean };
   NewsInterestsOnboarding: undefined;
+  LegendaryTest: undefined;
 };
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -278,12 +279,16 @@ const HomeScreen: React.FC = () => {
                 )}
               </TouchableOpacity>
 
-              {/* Notes */}
-              <TouchableOpacity style={[dynamicStyles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
-                <Text style={dynamicStyles.cardTitle}>Notes</Text>
-                {notesList.map((item, i) => (
-                  <Text key={i} style={dynamicStyles.listItemText}>{item}</Text>
-                ))}
+              {/* Backend Integration Test */}
+              <TouchableOpacity style={[dynamicStyles.card, styles.gridItem]} onPress={() => navigation.navigate('LegendaryTest')} activeOpacity={0.8}>
+                <MaterialCommunityIcons name="rocket-launch" size={28} color="#FF6B35" style={{ marginBottom: 8 }} />
+                <Text style={dynamicStyles.cardTitle}>🔥 Backend Test</Text>
+                <Text style={[dynamicStyles.listItemText, { color: '#FF6B35', fontWeight: 'bold' }]}>
+                  LEGENDARY API
+                </Text>
+                <Text style={dynamicStyles.listItemText}>
+                  Test Heroku Integration
+                </Text>
               </TouchableOpacity>
 
               {/* Reminders */}

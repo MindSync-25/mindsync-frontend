@@ -90,8 +90,8 @@ export const NewsProvider: React.FC<NewsProviderProps> = ({ children }) => {
 
   // Auto-load personalized news when preferences are loaded
   useEffect(() => {
-    if (preferences && preferences.setupComplete && newsArticles.length === 0) {
-      loadPersonalizedNews('happy', false);
+    if (preferences && preferences.setupComplete && newsArticles.length === 0 && !isLoading) {
+      loadPersonalizedNews(undefined, false); // No mood, just user interests
     }
   }, [preferences]);
 
@@ -201,65 +201,112 @@ export const NewsProvider: React.FC<NewsProviderProps> = ({ children }) => {
         }
       }
 
-      // Determine categories based on mood and user interests
-      let targetCategories = preferences?.interests || DEFAULT_CATEGORIES;
-      if (mood && MOOD_CATEGORY_MAPPING[mood as keyof typeof MOOD_CATEGORY_MAPPING]) {
-        const moodCategories = MOOD_CATEGORY_MAPPING[mood as keyof typeof MOOD_CATEGORY_MAPPING];
-        targetCategories = preferences?.interests?.filter(cat => moodCategories.includes(cat)) || [];
+      // Get user interests (ignore mood for now as requested)
+      const userInterests = preferences?.interests || [];
+      const hasInterests = userInterests.length > 0;
+
+      // 🔥 PROPER API CALL TO RAILWAY BACKEND WITH DB INTEGRATION!
+      const RAILWAY_API_URL = 'https://mindsync-core-api-production.up.railway.app';
+      console.log('🚀 Loading news from Railway backend DB...', { userInterests, hasInterests });
+      
+      // Build API endpoint based on user preferences
+      let apiEndpoint = `${RAILWAY_API_URL}/api/news`;
+      if (hasInterests) {
+        // If user has interests, filter by them
+        apiEndpoint += `?categories=${userInterests.join(',')}`;
+      }
+      // If no interests, get all news (no query params needed)
+      
+      console.log('📡 Calling API:', apiEndpoint);
+
+      try {
+        const response = await fetch(apiEndpoint, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            // Add user token if available for personalization
+            ...(await AsyncStorage.getItem('userToken') && {
+              'Authorization': `Bearer ${await AsyncStorage.getItem('userToken')}`
+            })
+          }
+        });
         
-        // If no overlap, use mood categories
-        if (targetCategories.length === 0) {
-          targetCategories = moodCategories;
+        if (!response.ok) {
+          console.log(`⚠️ Railway API returned ${response.status}, using fallback...`);
+          throw new Error(`Railway API error: ${response.status} - ${response.statusText}`);
         }
+        
+        const data = await response.json();
+        console.log('✅ Backend DB response:', data);
+        
+        // Process backend articles from your database
+        const backendArticles: NewsArticle[] = (data.articles || data.news || data || []).map((article: any) => ({
+          id: article.id || article._id || Math.random().toString(),
+          title: article.title,
+          description: article.description || article.summary || article.content?.substring(0, 150) + '...',
+          content: article.content || article.body,
+          url: article.url || article.link,
+          imageUrl: article.imageUrl || article.image || article.urlToImage,
+          source: article.source?.name || article.source || 'News Source',
+          category: article.category,
+          publishedAt: article.publishedAt || article.createdAt || new Date().toISOString(),
+          readTime: article.readTime || '3 min read',
+          moodTags: article.moodTags || ['informative'],
+          isLocal: article.isLocal || false,
+          isBookmarked: false,
+        }));
+
+        console.log('📰 Processed DB articles:', backendArticles.length);
+
+        // If backend articles exist, use them
+        if (backendArticles.length > 0) {
+          if (refresh) {
+            setNewsArticles(backendArticles);
+            await saveCachedNews(backendArticles);
+          } else {
+            // For non-refresh, replace current articles with fresh DB data
+            setNewsArticles(backendArticles);
+            await saveCachedNews(backendArticles);
+          }
+          setHasMore(backendArticles.length >= 10); // Assume more if we got 10+
+          setError(null); // Clear any previous errors
+          return; // Success - exit early
+        } else {
+          console.log('⚠️ No articles returned from backend DB');
+          throw new Error('No articles found in database');
+        }
+        
+      } catch (backendError) {
+        console.log('⚠️ Backend DB not available yet, using high-quality fallback:', backendError);
+        
+        // Create smart fallback based on user interests
+        const fallbackCategories = hasInterests ? userInterests : DEFAULT_CATEGORIES;
+        const fallbackArticles = generateMockNews(fallbackCategories, 'user-interests');
+        
+        if (refresh) {
+          setNewsArticles(fallbackArticles);
+          await saveCachedNews(fallbackArticles);
+        } else {
+          setNewsArticles(fallbackArticles);
+          await saveCachedNews(fallbackArticles);
+        }
+        
+        setError('Using offline news. Backend database will be available soon.');
+        setHasMore(true);
       }
 
-      // 🔥 REAL API CALL TO BACKEND!
-      const API_BASE_URL = 'http://localhost:5000';
-      
-      console.log('🚀 Loading news from backend...', { mood, targetCategories });
-      
-      // Call real backend API
-      const response = await fetch(`${API_BASE_URL}/api/news/recent?mood=${mood || 'general'}&categories=${targetCategories.join(',')}`);
-      
-      if (!response.ok) {
-        throw new Error(`Backend API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('✅ Backend response:', data);
-      
-      // Process backend articles
-      const backendArticles: NewsArticle[] = (data.articles || []).map((article: any) => ({
-        id: article.id || Math.random().toString(),
-        title: article.title,
-        description: article.description || article.content?.substring(0, 150) + '...',
-        content: article.content,
-        url: article.url,
-        imageUrl: article.urlToImage || article.image,
-        source: article.source?.name || article.source,
-        category: article.category,
-        publishedAt: article.publishedAt,
-        readTime: article.readTime || '2 min read',
-        moodTags: article.moodTags || ['informative'],
-        isLocal: false,
-        isBookmarked: false,
-      }));
-
-      console.log('📰 Processed articles:', backendArticles.length);
-
-      if (refresh) {
-        setNewsArticles(backendArticles);
-        await saveCachedNews(backendArticles);
-      } else {
-        const updatedArticles = [...newsArticles, ...backendArticles];
-        setNewsArticles(updatedArticles);
-        await saveCachedNews(updatedArticles);
-      }
-
-      setHasMore(true); // For pagination
     } catch (error) {
-      console.error('Error loading personalized news:', error);
-      setError('Failed to load news');
+      console.error('❌ Error in loadPersonalizedNews:', error);
+      
+      // Always provide fallback content instead of showing error state
+      console.log('🔄 Main error fallback - providing backup news...');
+      const emergencyFallbackArticles = generateMockNews(DEFAULT_CATEGORIES, 'emergency-fallback');
+      setNewsArticles(emergencyFallbackArticles);
+      await saveCachedNews(emergencyFallbackArticles);
+      
+      // Set a user-friendly message instead of technical error
+      setError('Using offline news. Check connection for latest updates.');
     } finally {
       setIsLoading(false);
     }

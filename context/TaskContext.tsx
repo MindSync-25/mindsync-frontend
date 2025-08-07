@@ -5,6 +5,38 @@ import * as taskApi from '../services/taskApi';
 export type TaskPriority = 'Low' | 'Medium' | 'High';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed';
 
+// Enhanced task comment interface
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  userId: string;
+  userName: string;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Time tracking interface
+export interface TimeLog {
+  id: string;
+  taskId: string;
+  userId: string;
+  startTime: string;
+  endTime?: string;
+  durationMinutes?: number;
+  description?: string;
+  createdAt: string;
+}
+
+// Task dependency interface
+export interface TaskDependency {
+  id: string;
+  taskId: string;
+  dependsOnTaskId: string;
+  dependsOnTaskTitle: string;
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -18,6 +50,25 @@ export interface Task {
   aiGenerated?: boolean;
   aiConfidence?: number;
   sourceText?: string;
+  // ✅ Backend-provided fields
+  isOverdue?: boolean;     // Server-calculated overdue status
+  completed?: boolean;     // Alternative completion field for frontend/backend mapping
+  createdAt?: string;      // Timestamp from backend
+  updatedAt?: string;      // Timestamp from backend
+  
+  // ✅ ENHANCED FIELDS
+  assigneeId?: string;           // User ID of assignee
+  assigneeName?: string;         // Display name of assignee
+  dependsOn?: string[];          // Array of task IDs this task depends on (matches backend API)
+  dependencies?: string[];       // Alternative field name for compatibility
+  recurringPattern?: 'daily' | 'weekly' | 'monthly';  // Recurring task pattern
+  recurringEndDate?: string;     // When recurring pattern ends
+  estimatedHours?: number;       // Estimated time to complete
+  actualHours?: number;          // Actual time spent
+  progressPercentage?: number;   // Progress percentage (0-100)
+  comments?: TaskComment[];      // Task comments
+  timeLogs?: TimeLog[];          // Time tracking logs
+  dependencyDetails?: TaskDependency[];  // Detailed dependency information
 }
 
 export type TaskGroup = 'Today' | 'Upcoming' | 'Completed';
@@ -44,9 +95,20 @@ function taskReducer(state: TaskState, action: Action): TaskState {
     case 'ADD_TASK':
       return { ...state, tasks: [action.task, ...state.tasks] };
     case 'UPDATE_TASK':
+      console.log('[TaskReducer] UPDATE_TASK:', action.task);
+      // ✅ Handle completed field from backend API
+      let updatedTask = action.task;
+      if ('completed' in action.task) {
+        updatedTask = {
+          ...action.task,
+          status: action.task.completed ? 'completed' : 'pending'
+        };
+        console.log('[TaskReducer] Mapped completed field:', action.task.completed, '→ status:', updatedTask.status);
+      }
+      
       return {
         ...state,
-        tasks: state.tasks.map(t => (t.id === action.task.id ? action.task : t)),
+        tasks: state.tasks.map(t => (t.id === updatedTask.id ? updatedTask : t)),
       };
     case 'DELETE_TASK':
       return { ...state, tasks: state.tasks.filter(t => t.id !== action.id) };

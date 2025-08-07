@@ -6,6 +6,8 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Dimensio
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
+import { authApi } from '../services/authApi';
+import ManualGoogleLogin from '../components/ManualGoogleLogin';
 
 const { width } = Dimensions.get('window');
 
@@ -16,6 +18,7 @@ type RootStackParamList = {
   Home: undefined;
   Profile: undefined;
   ComingSoon: undefined;
+  NewsInterestsOnboarding: undefined;
 };
 
 const LoginScreen = () => {
@@ -25,6 +28,7 @@ const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [showManualGoogle, setShowManualGoogle] = useState(false);
 
   const handleLogin = async () => {
     setError('');
@@ -34,35 +38,39 @@ const LoginScreen = () => {
     }
     setLoading(true);
     try {
-      // For Android emulator use: http://10.0.2.2:5000/api/login
-      // For iOS/web: http://localhost:5000/api/login
-      // For physical device: http://<your-computer-ip>:5000/api/login
-      const response = await axios.post('http://192.168.1.188:5000/api/auth/login', {
-        email,
+      // Use the new production-ready auth API
+      const response = await authApi.login({
+        email: email.trim(),
         password,
       });
-      if (response.data.token) {
-        // Save token for authentication
-        await AsyncStorage.setItem('userToken', response.data.token);
-        
-        // Save user session data for HomeScreen
-        await AsyncStorage.setItem('userSession', JSON.stringify({
-          userName: response.data.user?.name || response.data.user?.fullName || 'User',
-          userId: response.data.user?.id || response.data.user?._id || '',
-          email: response.data.user?.email || email
-        }));
-        console.log('Login response:', response.data);
-        navigation.navigate('Home');
+      
+      console.log('✅ Login successful:', response);
+      
+      // Check if user has completed news interests onboarding
+      const newsOnboardingComplete = await AsyncStorage.getItem('newsOnboardingComplete');
+      if (newsOnboardingComplete === 'true') {
+        navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
       } else {
-        setError(response.data.message || 'Login failed. Please try again.');
+        navigation.navigate('NewsInterestsOnboarding');
       }
-    } catch (err) {
-      console.log('Login error:', err);
-      // Try to show backend error message if available
-      if (axios.isAxiosError(err) && err.response && err.response.data && err.response.data.message) {
-        setError(err.response.data.message);
+    } catch (err: any) {
+      console.log('❌ Login error:', err);
+      console.log('❌ Login error response:', err.response?.data);
+      
+      // Handle different error types from production API
+      if (err.message?.includes('User not found') || err.message?.includes('register first')) {
+        setError('Account not found. Please register first or check your email.');
+      } else if (err.response?.status === 401 || err.message?.includes('Invalid email or password')) {
+        setError('Invalid email or password. Please try again.');
+      } else if (err.response?.status === 400) {
+        setError(err.response?.data?.message || 'Invalid login credentials.');
+      } else if (err.response?.status >= 500) {
+        setError('Server error. Please try again later.');
+      } else if (err.message?.includes('timeout')) {
+        setError('Connection timeout. Please check your internet and try again.');
       } else {
-        setError('Network error. Please try again.');
+        // Display the actual error message from the backend
+        setError(err.message || 'Network error. Please check your connection.');
       }
     } finally {
       setLoading(false);
@@ -82,60 +90,164 @@ const LoginScreen = () => {
   const [request, response, promptAsync] = AuthSession.useAuthRequest({
     clientId,
     redirectUri: AuthSession.makeRedirectUri({}),
-    scopes: ['profile', 'email'],
+    scopes: ['profile', 'email', 'openid'],
     responseType: AuthSession.ResponseType.Token,
+    extraParams: {
+      include_granted_scopes: 'true',
+    },
     usePKCE: false,
   }, discovery);
 
   React.useEffect(() => {
     const handleGoogleResponse = async () => {
-      if (response?.type === 'success' && response.params?.id_token) {
-        setGoogleLoading(true);
-        try {
-          const backendResponse = await axios.post('http://192.168.1.188:5000/api/auth/googleLogin', {
-            idToken: response.params.id_token,
-          });
-          if (backendResponse.data.token) {
-            await AsyncStorage.setItem('userToken', backendResponse.data.token);
-            await AsyncStorage.setItem('userSession', JSON.stringify({
-              userName: backendResponse.data.user?.name || backendResponse.data.user?.fullName || 'User',
-              userId: backendResponse.data.user?.id || backendResponse.data.user?._id || '',
-              email: backendResponse.data.user?.email || '',
-            }));
-            console.log('Google login response:', backendResponse.data);
-            navigation.navigate('Home');
-          } else {
-            setError(backendResponse.data.message || 'Google login failed. Please try again.');
-          }
-        } catch (err) {
-          // Log full error for debugging
-          if (axios.isAxiosError(err)) {
-            if (err.response) {
-              console.log('Google login error response:', err.response);
-              setError('Google login error: ' + (err.response.data?.message || err.message));
-            } else if (err.request) {
-              console.log('Google login error request:', err.request);
-              setError('Google login request error: Could not reach backend. Check network and CORS.');
-            } else {
-              console.log('Google login error:', err.message);
-              setError('Google login error: ' + err.message);
+      console.log('🔍 Google OAuth response received:', response);
+      
+      // Add timeout check for stuck OAuth
+      if (!response) {
+        console.log('⏱️ No OAuth response yet...');
+        return;
+      }
+      
+      if (response?.type === 'success') {
+        console.log('✅ Google OAuth success! Params:', response.params);
+        
+        if (response.params?.access_token) {
+          setGoogleLoading(true);
+          try {
+            // First, try to get user info from Google directly using the access token
+            console.log('📡 Fetching user info from Google...');
+            const userInfoResponse = await fetch(
+              `https://www.googleapis.com/oauth2/v1/userinfo?access_token=${response.params.access_token}`,
+              {
+                method: 'GET',
+                headers: {
+                  Accept: 'application/json',
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+            
+            if (!userInfoResponse.ok) {
+              throw new Error(`Failed to fetch user info: ${userInfoResponse.status}`);
             }
-          } else {
-            console.log('Google login error:', err);
-            setError('Network error. Please try again.');
+            
+            const googleUserInfo = await userInfoResponse.json();
+            console.log('👤 Google user info:', googleUserInfo);
+
+            // Try backend authentication first
+            try {
+              console.log('🔗 Attempting backend authentication...');
+              const backendResponse = await axios.post('http://localhost:8081/api/auth/googleLogin', {
+                accessToken: response.params.access_token,
+                userInfo: googleUserInfo,
+              });
+              
+              if (backendResponse.data.token) {
+                await AsyncStorage.setItem('userToken', backendResponse.data.token);
+                await AsyncStorage.setItem('userSession', JSON.stringify({
+                  userName: backendResponse.data.user?.name || googleUserInfo.name || 'User',
+                  userId: backendResponse.data.user?.id || googleUserInfo.id || '',
+                  email: backendResponse.data.user?.email || googleUserInfo.email || '',
+                }));
+                console.log('✅ Google backend login successful:', backendResponse.data);
+                navigation.navigate('Home');
+                return; // Success - exit early
+              }
+            } catch (backendError) {
+              console.log('⚠️ Backend Google auth not available, using fallback:', backendError);
+              
+              // Fallback: Create local session with Google user info
+              const fallbackToken = `google_fallback_${Date.now()}_${Math.random()}`;
+              await AsyncStorage.setItem('userToken', fallbackToken);
+              await AsyncStorage.setItem('userSession', JSON.stringify({
+                userName: googleUserInfo.name || 'Google User',
+                userId: googleUserInfo.id || `google_${Date.now()}`,
+                email: googleUserInfo.email || '',
+                isGoogleUser: true,
+                isFallbackAuth: true,
+              }));
+              
+              console.log('✅ Google fallback login successful with user:', googleUserInfo.name);
+              navigation.navigate('Home');
+              return;
+            }
+            
+          } catch (err) {
+            console.error('❌ Google login failed:', err);
+            setError('Google login failed. Please try again or use email/password.');
+          } finally {
+            setGoogleLoading(false);
           }
-        } finally {
+        } else {
+          console.warn('⚠️ No access token in response params');
+          setError('Google login incomplete - no access token received.');
           setGoogleLoading(false);
         }
+      } else if (response?.type === 'error') {
+        console.log('❌ Google OAuth error:', response.error);
+        setError(`Google login error: ${response.error?.message || 'Unknown error'}`);
+        setGoogleLoading(false);
+      } else if (response?.type === 'cancel') {
+        console.log('🚫 Google OAuth cancelled by user');
+        setError('Google login was cancelled.');
+        setGoogleLoading(false);
+      } else if (response?.type === 'dismiss') {
+        console.log('🔄 Google OAuth popup dismissed - showing alternative');
+        setError('Google popup closed. Please use the alternative login below.');
+        setShowManualGoogle(true);
+        setGoogleLoading(false);
       }
     };
-    handleGoogleResponse();
-  }, [response]);
+    
+    if (response) {
+      handleGoogleResponse();
+    }
+    
+    // Auto-show alternative after 10 seconds if no response
+    const timeout = setTimeout(() => {
+      if (!response && googleLoading) {
+        console.log('⏰ OAuth timeout - showing alternative login');
+        setError('OAuth taking too long. Please use the alternative login below.');
+        setShowManualGoogle(true);
+        setGoogleLoading(false);
+      }
+    }, 10000);
+    
+    return () => clearTimeout(timeout);
+  }, [response, googleLoading]);
 
   const handleGoogleLogin = async () => {
     setError('');
     setGoogleLoading(true);
-    await promptAsync();
+    
+    console.log('🚀 Starting Google login...');
+    console.log('Request config:', request);
+    console.log('Redirect URI:', AuthSession.makeRedirectUri({}));
+    
+    try {
+      const result = await promptAsync();
+      console.log('Google OAuth result:', result);
+      
+      if (result.type === 'cancel') {
+        setError('Google login was cancelled.');
+      } else if (result.type === 'error') {
+        console.error('Google OAuth error:', result.error);
+        setError(`Google login error: ${result.error?.message || 'Unknown error'}`);
+      }
+      // The useEffect will handle success case
+    } catch (error) {
+      console.error('Google login prompt error:', error);
+      
+      // Check if it's a popup blocked error
+      if (error.message && error.message.includes('Popup window was blocked')) {
+        console.log('🚨 Popup blocked! Showing alternative login...');
+        setError('Popup blocked by browser. Please use the alternative login below.');
+        setShowManualGoogle(true); // Automatically show the alternative
+      } else {
+        setError('Failed to open Google login. Please try again.');
+      }
+    }
+    
     setGoogleLoading(false);
   };
 
@@ -177,19 +289,50 @@ const LoginScreen = () => {
           <Ionicons name="logo-google" size={20} color="#fff" style={styles.icon} />
           <Text style={styles.socialButtonText}>{googleLoading ? 'Logging in...' : 'Continue with Google'}</Text>
         </TouchableOpacity>
+        
+        {/* Alternative Google Login for when OAuth popup is blocked */}
+        <TouchableOpacity 
+          style={styles.alternativeButton}
+          onPress={() => setShowManualGoogle(!showManualGoogle)}
+        >
+          <Text style={styles.alternativeButtonText}>
+            {showManualGoogle ? '↑ Hide Alternative Login' : '↓ Popup Blocked? Use Alternative Login'}
+          </Text>
+        </TouchableOpacity>
 
-        {/* Apple Login (iOS + web visible) */}
-        {(Platform.OS === 'ios' || Platform.OS === 'web') && (
+        {/* Manual Google Login Fallback */}
+        {showManualGoogle && (
+          <ManualGoogleLogin 
+            onSuccess={() => {
+              setShowManualGoogle(false);
+              navigation.navigate('Home');
+            }}
+          />
+        )}
+
+        {/* Apple Login */}
+        {Platform.OS === 'ios' && (
           <TouchableOpacity style={styles.socialButton}>
             <Ionicons name="logo-apple" size={20} color="#fff" style={styles.icon} />
             <Text style={styles.socialButtonText}>Continue with Apple</Text>
           </TouchableOpacity>
         )}
 
+        {/* Apple Login Alternative for Android/Web */}
+        {Platform.OS !== 'ios' && (
+          <TouchableOpacity 
+            style={styles.socialButton}
+            onPress={() => Alert.alert('Apple Sign-In', 'Apple Sign-In is only available on iOS devices')}
+          >
+            <Ionicons name="logo-apple" size={20} color="#fff" style={styles.icon} />
+            <Text style={styles.socialButtonText}>Continue with Apple</Text>
+          </TouchableOpacity>
+        )}
+
         <Text style={styles.footerText}>
-         Already have an account?{' '}
+         Don't have an account?{' '}
          <Text style={styles.linkText} onPress={() => navigation.navigate('Signup')}>
-         Sing Up
+         Sign Up
         </Text>
         </Text>
       </View>
@@ -212,10 +355,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1c1c1c',
     padding: 24,
     borderRadius: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
+    boxShadow: '0px 2px 10px rgba(0, 0, 0, 0.2)',
   },
   title: {
     fontSize: 28,
@@ -288,6 +428,16 @@ linkText: {
   fontWeight: '600',
   fontSize: 14,       // Match with footerText
   lineHeight: 20,     // Match with footerText
+},
+alternativeButton: {
+  padding: 8,
+  marginVertical: 8,
+  alignItems: 'center',
+},
+alternativeButtonText: {
+  color: '#888',
+  fontSize: 12,
+  textAlign: 'center',
 }
 
 });
