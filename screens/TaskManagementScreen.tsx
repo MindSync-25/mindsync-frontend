@@ -1,25 +1,29 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, TextInput, Alert, Animated } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, TextInput, Alert, Animated, Dimensions } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTasks, Task, TaskStatus } from '../context/TaskContext';
 import TaskModal from '../components/TaskModal';
 import TaskItem from '../components/TaskItem';
 import { useTheme } from '../context/ThemeContext';
-import VoiceTaskCreator from '../components/VoiceTaskCreator';
 import AITaskSuggestions from '../components/AITaskSuggestions';
 import TaskDependencies from '../components/TaskDependencies';
 import { 
   toggleTaskCompletion,
-  createTaskFromVoice,
   createTaskFromText,
   addTaskDependency,
   getAISuggestions,
   acceptAISuggestion
 } from '../services/taskApi';
+import { aiAPI } from '../services/aiAPI';
 import { authApi } from '../services/authApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TaskManagementScreen = ({ navigation }) => {
+  // 📱 RESPONSIVE: Device size detection
+  const { width } = Dimensions.get('window');
+  const isTablet = width >= 768;
+  const isMobile = width < 768;
+  
   // ✅ AUTO-REFRESH OVERDUE STATUS EVERY MINUTE
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -36,14 +40,17 @@ const TaskManagementScreen = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [quickTaskText, setQuickTaskText] = useState('');
-  const [activeView, setActiveView] = useState<'list' | 'kanban' | 'timeline'>('list');
+  // 🎯 BACKEND REQUIREMENT: Smart view switching (no Kanban on mobile)
+  const [activeView, setActiveView] = useState<'list' | 'kanban' | 'timeline'>(isMobile ? 'list' : 'kanban');
   const [filterPriority, setFilterPriority] = useState<'all' | 'Low' | 'Medium' | 'High'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'priority' | 'dueDate' | 'created'>('priority');
   
-  // Enhanced Features State
-  const [showVoiceCreator, setShowVoiceCreator] = useState(false);
+  // 🧠 AI-Enhanced Features State (Backend Requirements)
   const [showAISuggestions, setShowAISuggestions] = useState(false);
   const [showDependencies, setShowDependencies] = useState(false);
+  const [showSmartFilters, setShowSmartFilters] = useState(false);
+  const [aiTaskSuggestions, setAiTaskSuggestions] = useState([]);
   const [fabExpanded, setFabExpanded] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState([]);
   
@@ -79,23 +86,51 @@ const TaskManagementScreen = ({ navigation }) => {
     }
   };
 
-  const handleVoiceTaskCreate = async (voiceData: any) => {
-    try {
-      const newTask = await createTaskFromVoice(voiceData);
-      dispatch({ type: 'ADD_TASK', task: { ...newTask, status: 'pending' as TaskStatus } });
-      setShowVoiceCreator(false);
-    } catch (error) {
-      console.error('Failed to create voice task:', error);
-    }
-  };
-
+  // 🧠 BACKEND REQUIREMENT: AI-enhanced quick task creation
   const handleQuickTaskCreate = async (text: string) => {
+    if (!text.trim()) return;
+    
     try {
-      const task = await createTaskFromText(text);
-      dispatch({ type: 'ADD_TASK', task: { ...task, status: 'pending' as TaskStatus } });
+      // Use AI to analyze the task text and suggest improvements
+      const suggestions = await aiAPI.analyzeTaskText(text);
+      
+      const newTask = {
+        title: suggestions.suggestedTitle || text,
+        description: suggestions.suggestedDescription || '',
+        priority: (suggestions.suggestedPriority as 'Low' | 'Medium' | 'High') || 'Medium',
+        status: 'pending' as TaskStatus,
+        dueDate: suggestions.suggestedDuration ? 
+          new Date(Date.now() + suggestions.suggestedDuration * 24 * 60 * 60 * 1000).toISOString() : 
+          undefined,
+        createdAt: new Date().toISOString(),
+        id: Date.now().toString(),
+      };
+
+      dispatch({ type: 'ADD_TASK', task: newTask });
       setQuickTaskText('');
+      
+      // Show AI suggestions if available
+      if (suggestions.extractedKeywords?.length > 0) {
+        Alert.alert(
+          'AI Suggestions Applied',
+          `✨ Keywords: ${suggestions.extractedKeywords.join(', ')}\n🎯 Priority: ${suggestions.suggestedPriority}`,
+          [{ text: 'Great!' }]
+        );
+      }
     } catch (error) {
-      console.error('Failed to create task from text:', error);
+      console.error('Failed to create smart task:', error);
+      
+      // Fallback: create basic task
+      const basicTask = {
+        title: text,
+        description: '',
+        priority: 'Medium' as 'Low' | 'Medium' | 'High',
+        status: 'pending' as TaskStatus,
+        createdAt: new Date().toISOString(),
+        id: Date.now().toString(),
+      };
+      dispatch({ type: 'ADD_TASK', task: basicTask });
+      setQuickTaskText('');
     }
   };
 
@@ -140,6 +175,64 @@ const TaskManagementScreen = ({ navigation }) => {
     Completed: state.tasks.filter(t => t.status === 'completed'),
   };
 
+  // 🧠 BACKEND REQUIREMENT: Smart Task Filtering & Sorting Logic
+  const groupedFiltered = useMemo(() => {
+    const filteredTasks = state.tasks.filter(task => {
+      const matchesSearch = !searchQuery || 
+        task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        task.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
+      
+      return matchesSearch && matchesPriority;
+    });
+
+    // Sort tasks
+    filteredTasks.sort((a, b) => {
+      switch (sortBy) {
+        case 'priority':
+          const priorityOrder = { 'High': 3, 'Medium': 2, 'Low': 1 };
+          return (priorityOrder[b.priority as keyof typeof priorityOrder] || 0) - (priorityOrder[a.priority as keyof typeof priorityOrder] || 0);
+        case 'dueDate':
+          if (!a.dueDate && !b.dueDate) return 0;
+          if (!a.dueDate) return 1;
+          if (!b.dueDate) return -1;
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        case 'created':
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        default:
+          return 0;
+      }
+    });
+
+    return {
+      Today: filteredTasks.filter(t => t.status !== 'completed' && !isOverdue(t.dueDate) && isToday(t.dueDate)),
+      Upcoming: filteredTasks.filter(t => t.status !== 'completed' && !isOverdue(t.dueDate) && !isToday(t.dueDate)),
+      Overdue: filteredTasks.filter(t => t.status !== 'completed' && isOverdue(t.dueDate)),
+      Completed: filteredTasks.filter(t => t.status === 'completed'),
+    };
+  }, [state.tasks, searchQuery, filterPriority, sortBy]);
+
+  // 🎨 Helper functions for Kanban view colors
+  const getGroupColor = (group: string) => {
+    switch (group) {
+      case 'Today': return '#4A9EFF';
+      case 'Upcoming': return '#2196F3';
+      case 'Overdue': return '#FF5722';
+      case 'Completed': return '#4CAF50';
+      default: return '#9E9E9E';
+    }
+  };
+
+  const getPriorityColor = (priority?: string) => {
+    switch (priority?.toLowerCase()) {
+      case 'high': return '#FF5722';
+      case 'medium': return '#FF9800';
+      case 'low': return '#4CAF50';
+      default: return '#9E9E9E';
+    }
+  };
+
   function isToday(date?: string) {
     if (!date) return false;
     // ✅ FIXED: Better timezone handling for date comparison
@@ -177,6 +270,24 @@ const TaskManagementScreen = ({ navigation }) => {
       filtered = filtered.filter(task => task.priority === filterPriority);
     }
 
+    // 🧠 BACKEND REQUIREMENT: Smart sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'priority':
+          const priorityOrder = { 'High': 3, 'Medium': 2, 'Low': 1 };
+          return priorityOrder[b.priority] - priorityOrder[a.priority];
+        case 'dueDate':
+          if (!a.dueDate && !b.dueDate) return 0;
+          if (!a.dueDate) return 1;
+          if (!b.dueDate) return -1;
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        case 'created':
+          return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+        default:
+          return 0;
+      }
+    });
+
     return filtered;
   };
 
@@ -184,7 +295,7 @@ const TaskManagementScreen = ({ navigation }) => {
     container: {
       flex: 1,
       backgroundColor: theme === 'light' ? '#fff' : '#181818',
-      paddingTop: 32,
+      paddingTop: 0, // Remove top padding
     },
     closeButton: {
       position: 'absolute',
@@ -215,112 +326,592 @@ const TaskManagementScreen = ({ navigation }) => {
     },
     fab: {
       position: 'absolute',
-      right: 24,
-      bottom: 32,
-      backgroundColor: theme === 'light' ? '#007AFF' : '#007AFF',
-      borderRadius: 32,
-      width: 64,
-      height: 64,
+      right: 20,
+      bottom: 20,
+      backgroundColor: '#4A9EFF',
+      borderRadius: 24,
+      width: 48,
+      height: 48,
       alignItems: 'center',
       justifyContent: 'center',
-      boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.2)',
-      elevation: 4,
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
     },
     fabSubButton: {
       position: 'absolute',
-      right: 24,
+      right: 20,
       backgroundColor: '#fff',
-      borderRadius: 28,
-      width: 56,
-      height: 56,
+      borderRadius: 20,
+      width: 40,
+      height: 40,
       alignItems: 'center',
       justifyContent: 'center',
-      boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.15)',
-      elevation: 3,
+      elevation: 4,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
     },
     fabLabel: {
       position: 'absolute',
-      right: 88,
+      right: 70,
       backgroundColor: 'rgba(0,0,0,0.8)',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
     },
     fabLabelText: {
       color: '#fff',
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '500',
+    },
+    // 🧠 BACKEND REQUIREMENT: Smart Filter & Search Styles
+    searchFilterContainer: {
+      paddingHorizontal: 16,
+      paddingTop: 8, // Minimal gap from header
+      paddingBottom: 8,
+      backgroundColor: theme === 'light' ? '#fff' : '#181818',
+      borderBottomWidth: 1,
+      borderBottomColor: theme === 'light' ? '#f0f0f0' : '#333',
+    },
+    searchBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme === 'light' ? '#f8f8f8' : '#2a2a2a',
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginBottom: 12,
+    },
+    searchInput: {
+      flex: 1,
+      marginLeft: 8,
+      fontSize: 16,
+      color: theme === 'light' ? '#000' : '#fff',
+    },
+    filterRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 12,
+    },
+    filterButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme === 'light' ? '#f0f0f0' : '#333',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 20,
+      gap: 4,
+    },
+    filterButtonActive: {
+      backgroundColor: '#4A9EFF',
+    },
+    filterText: {
+      fontSize: 14,
+      color: theme === 'light' ? '#666' : '#aaa',
+      fontWeight: '500',
+    },
+    filterTextActive: {
+      color: '#fff',
+    },
+    quickFilters: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 12,
+    },
+    quickFilterChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: theme === 'light' ? '#f0f0f0' : '#333',
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    quickFilterChipActive: {
+      backgroundColor: '#4A9EFF',
+      borderColor: '#4A9EFF',
+    },
+    quickFilterText: {
+      fontSize: 12,
+      color: theme === 'light' ? '#666' : '#aaa',
+      fontWeight: '500',
+    },
+    quickFilterTextActive: {
+      color: '#fff',
+    },
+    quickTaskBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme === 'light' ? '#f8f8f8' : '#2a2a2a',
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderWidth: 2,
+      borderColor: 'rgba(74, 158, 255, 0.3)',
+      gap: 8,
+    },
+    quickTaskInput: {
+      flex: 1,
+      fontSize: 16,
+      color: theme === 'light' ? '#000' : '#fff',
+    },
+    // 🏗️ KANBAN VIEW STYLES
+    kanbanContainer: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      minHeight: '100%',
+    },
+    kanbanColumn: {
+      width: isTablet ? 280 : 250,
+      marginRight: 16,
+      backgroundColor: theme === 'light' ? '#f8f9fa' : '#2a2a2a',
+      borderRadius: 12,
+      padding: 12,
+      maxHeight: '85%',
+    },
+    kanbanColumnHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: theme === 'light' ? '#e0e0e0' : '#444',
+    },
+    kanbanColumnTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: theme === 'light' ? '#000' : '#fff',
+    },
+    kanbanColumnBadge: {
+      borderRadius: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      minWidth: 24,
+      alignItems: 'center',
+    },
+    kanbanColumnCount: {
+      color: '#fff',
+      fontSize: 12,
+      fontWeight: 'bold',
+    },
+    kanbanColumnScroll: {
+      flex: 1,
+    },
+    kanbanEmptyState: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 40,
+    },
+    kanbanEmptyText: {
+      color: '#888',
+      fontStyle: 'italic',
+      fontSize: 14,
+    },
+    kanbanTaskCard: {
+      backgroundColor: theme === 'light' ? '#fff' : '#333',
+      borderRadius: 8,
+      marginBottom: 12,
+      overflow: 'hidden',
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+    },
+    taskPriorityBar: {
+      height: 4,
+      width: '100%',
+    },
+    kanbanTaskContent: {
+      padding: 12,
+    },
+    kanbanTaskTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: theme === 'light' ? '#000' : '#fff',
+      marginBottom: 8,
+    },
+    kanbanTaskDescription: {
+      fontSize: 12,
+      color: theme === 'light' ? '#666' : '#aaa',
+      marginBottom: 12,
+      lineHeight: 16,
+    },
+    kanbanTaskMeta: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    kanbanTaskDue: {
+      fontSize: 11,
+      color: theme === 'light' ? '#666' : '#aaa',
+      fontWeight: '500',
+    },
+    kanbanTaskOverdue: {
+      color: '#FF5722',
+      fontWeight: 'bold',
+    },
+    kanbanTaskPriority: {
+      fontSize: 11,
+      fontWeight: 'bold',
+      textTransform: 'uppercase',
+    },
+    kanbanTaskActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 8,
+    },
+    kanbanActionButton: {
+      padding: 6,
+      borderRadius: 6,
+      backgroundColor: theme === 'light' ? '#f0f0f0' : '#444',
+    },
+    kanbanCompleteButton: {
+      backgroundColor: theme === 'light' ? '#e8f5e8' : '#2d4a2d',
+    },
+    kanbanEditButton: {
+      backgroundColor: theme === 'light' ? '#e3f2fd' : '#1a365d',
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingTop: 16, // Reduced gap above header
+      paddingBottom: 16,
+      backgroundColor: theme === 'light' ? '#fff' : '#181818',
+      borderBottomWidth: 1,
+      borderBottomColor: theme === 'light' ? '#f0f0f0' : '#333',
+    },
+    headerTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: theme === 'light' ? '#000' : '#fff',
+    },
+    compactCloseButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: theme === 'light' ? '#f0f0f0' : '#444',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    compactCloseText: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: theme === 'light' ? '#000' : '#fff',
+    },
+    // New styles for compact list view
+    compactListContainer: {
+      padding: 16,
+      paddingBottom: 100,
+    },
+    compactSection: {
+      marginBottom: 24,
+    },
+    compactSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    sectionIndicator: {
+      width: 4,
+      height: 24,
+      borderRadius: 2,
+      marginRight: 8,
+    },
+    compactSectionTitle: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#333',
+    },
+    taskGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    compactTaskCard: {
+      flex: 1,
+      backgroundColor: '#fff',
+      borderRadius: 12,
+      padding: 12,
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+    },
+    taskCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    priorityDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginRight: 8,
+    },
+    compactTaskTitle: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: '#333',
+      flex: 1,
+    },
+    completedTaskText: {
+      textDecorationLine: 'line-through',
+      color: '#aaa',
+    },
+    compactDueDate: {
+      fontSize: 12,
+      color: '#666',
     },
   });
 
   return (
     <View style={dynamicStyles.container}>
-      {/* X button for closing (top left) */}
-      <TouchableOpacity
-        style={dynamicStyles.closeButton}
-        onPress={() => navigation.navigate('Dashboard')}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="close" size={32} color={theme === 'light' ? '#000' : '#fff'} />
-      </TouchableOpacity>
+      {/* Compact Header */}
+      <View style={dynamicStyles.header}>
+        <Text style={dynamicStyles.headerTitle}>
+          Task Management
+        </Text>
+        <TouchableOpacity 
+          style={dynamicStyles.compactCloseButton}
+          onPress={() => navigation.navigate('Dashboard')}
+        >
+          <Text style={dynamicStyles.compactCloseText}>×</Text>
+        </TouchableOpacity>
+      </View>
       
-      <ScrollView contentContainerStyle={dynamicStyles.scrollContent}>
-        {(['Today', 'Upcoming', 'Overdue', 'Completed'] as const).map(group => (
-          <View key={group} style={dynamicStyles.groupSection}>
-            <Text style={dynamicStyles.groupTitle}>{group}</Text>
-            {grouped[group].length === 0 ? (
-              <Text style={dynamicStyles.emptyText}>No tasks</Text>
-            ) : (
-              grouped[group].map(task => (
-                <TaskItem
-                  key={task.id}
-                  task={task}
-                  onEdit={() => { setEditingTask(task); setModalVisible(true); }}
-                  onStatusChange={status => handleTaskStatusChange(task, status)}
-                  isOverdue={group === 'Overdue'}
-                />
-              ))
-            )}
+      {/* 🧠 BACKEND REQUIREMENT: Smart Search & Filter Bar */}
+      <View style={dynamicStyles.searchFilterContainer}>
+        {/* Search Bar */}
+        <View style={dynamicStyles.searchBar}>
+          <Ionicons name="search" size={20} color={theme === 'light' ? '#666' : '#aaa'} />
+          <TextInput
+            style={dynamicStyles.searchInput}
+            placeholder="Search tasks..."
+            placeholderTextColor={theme === 'light' ? '#666' : '#aaa'}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color={theme === 'light' ? '#666' : '#aaa'} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Filter & Sort Row */}
+        <View style={dynamicStyles.filterRow}>
+          {/* Priority Filter */}
+          <TouchableOpacity 
+            style={[dynamicStyles.filterButton, filterPriority !== 'all' && dynamicStyles.filterButtonActive]}
+            onPress={() => setShowSmartFilters(!showSmartFilters)}
+          >
+            <Ionicons name="filter" size={16} color={filterPriority !== 'all' ? '#4A9EFF' : (theme === 'light' ? '#666' : '#aaa')} />
+            <Text style={[dynamicStyles.filterText, filterPriority !== 'all' && dynamicStyles.filterTextActive]}>
+              {filterPriority !== 'all' ? filterPriority : 'Filter'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Sort By */}
+          <TouchableOpacity 
+            style={dynamicStyles.filterButton}
+            onPress={() => {
+              const sorts = ['priority', 'dueDate', 'created'] as const;
+              const currentIndex = sorts.indexOf(sortBy);
+              setSortBy(sorts[(currentIndex + 1) % sorts.length]);
+            }}
+          >
+            <Ionicons name="swap-vertical" size={16} color={theme === 'light' ? '#666' : '#aaa'} />
+            <Text style={dynamicStyles.filterText}>
+              {sortBy === 'priority' ? 'Priority' : sortBy === 'dueDate' ? 'Due Date' : 'Created'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* View Switcher (Only on Tablet/Desktop) */}
+          {isTablet && (
+            <TouchableOpacity 
+              style={dynamicStyles.filterButton}
+              onPress={() => {
+                const views = ['list', 'kanban'] as const;
+                const currentIndex = views.indexOf(activeView as any);
+                setActiveView(views[(currentIndex + 1) % views.length]);
+              }}
+            >
+              <Ionicons 
+                name={activeView === 'list' ? 'list' : 'grid'} 
+                size={16} 
+                color={theme === 'light' ? '#666' : '#aaa'} 
+              />
+              <Text style={dynamicStyles.filterText}>
+                {activeView === 'list' ? 'List' : 'Kanban'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Quick Filters (when smart filters is open) */}
+        {showSmartFilters && (
+          <View style={dynamicStyles.quickFilters}>
+            {['all', 'High', 'Medium', 'Low'].map((priority) => (
+              <TouchableOpacity
+                key={priority}
+                style={[
+                  dynamicStyles.quickFilterChip,
+                  filterPriority === priority && dynamicStyles.quickFilterChipActive
+                ]}
+                onPress={() => setFilterPriority(priority as any)}
+              >
+                <Text style={[
+                  dynamicStyles.quickFilterText,
+                  filterPriority === priority && dynamicStyles.quickFilterTextActive
+                ]}>
+                  {priority === 'all' ? 'All Priorities' : priority}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        ))}
-      </ScrollView>
+        )}
+
+        {/* 🧠 Quick Task Creation Bar */}
+        <View style={dynamicStyles.quickTaskBar}>
+          <Ionicons name="add-circle" size={20} color="#4A9EFF" />
+          <TextInput
+            style={dynamicStyles.quickTaskInput}
+            placeholder="Quick add: 'Call client about project tomorrow'"
+            placeholderTextColor={theme === 'light' ? '#666' : '#aaa'}
+            value={quickTaskText}
+            onChangeText={setQuickTaskText}
+            onSubmitEditing={() => handleQuickTaskCreate(quickTaskText)}
+            returnKeyType="done"
+          />
+          {quickTaskText ? (
+            <TouchableOpacity onPress={() => handleQuickTaskCreate(quickTaskText)}>
+              <Ionicons name="send" size={20} color="#4A9EFF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+      
+      {/* 🎯 BACKEND REQUIREMENT: Conditional View Rendering */}
+      {activeView === 'list' ? (
+        /* 📱 LIST VIEW - Mobile & Desktop */
+        <ScrollView contentContainerStyle={dynamicStyles.scrollContent}>
+          {(['Today', 'Upcoming', 'Overdue', 'Completed'] as const).map(group => (
+            <View key={group} style={dynamicStyles.groupSection}>
+              <Text style={dynamicStyles.groupTitle}>{group}</Text>
+              {groupedFiltered[group].length === 0 ? (
+                <Text style={dynamicStyles.emptyText}>No tasks</Text>
+              ) : (
+                groupedFiltered[group].map(task => (
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    onEdit={() => { setEditingTask(task); setModalVisible(true); }}
+                    onStatusChange={status => handleTaskStatusChange(task, status)}
+                    isOverdue={group === 'Overdue'}
+                  />
+                ))
+              )}
+            </View>
+          ))}
+        </ScrollView>
+      ) : (
+        /* 📊 KANBAN VIEW - Tablet & Desktop Only */
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={dynamicStyles.kanbanContainer}>
+          {(['Today', 'Upcoming', 'Overdue', 'Completed'] as const).map(group => (
+            <View key={group} style={dynamicStyles.kanbanColumn}>
+              <View style={dynamicStyles.kanbanColumnHeader}>
+                <Text style={dynamicStyles.kanbanColumnTitle}>{group}</Text>
+                <View style={[dynamicStyles.kanbanColumnBadge, { backgroundColor: getGroupColor(group) }]}>
+                  <Text style={dynamicStyles.kanbanColumnCount}>{groupedFiltered[group].length}</Text>
+                </View>
+              </View>
+              <ScrollView style={dynamicStyles.kanbanColumnScroll} showsVerticalScrollIndicator={false}>
+                {groupedFiltered[group].length === 0 ? (
+                  <View style={dynamicStyles.kanbanEmptyState}>
+                    <Text style={dynamicStyles.kanbanEmptyText}>No {group.toLowerCase()} tasks</Text>
+                  </View>
+                ) : (
+                  groupedFiltered[group].map(task => (
+                    <TouchableOpacity
+                      key={task.id}
+                      style={dynamicStyles.kanbanTaskCard}
+                      onPress={() => { setEditingTask(task); setModalVisible(true); }}
+                    >
+                      <View style={[dynamicStyles.taskPriorityBar, { backgroundColor: getPriorityColor(task.priority) }]} />
+                      <View style={dynamicStyles.kanbanTaskContent}>
+                        <Text style={dynamicStyles.kanbanTaskTitle} numberOfLines={2}>
+                          {task.title}
+                        </Text>
+                        {task.description && (
+                          <Text style={dynamicStyles.kanbanTaskDescription} numberOfLines={3}>
+                            {task.description}
+                          </Text>
+                        )}
+                        <View style={dynamicStyles.kanbanTaskMeta}>
+                          {task.dueDate && (
+                            <Text style={[
+                              dynamicStyles.kanbanTaskDue,
+                              isOverdue(task.dueDate) && dynamicStyles.kanbanTaskOverdue
+                            ]}>
+                              {new Date(task.dueDate).toLocaleDateString()}
+                            </Text>
+                          )}
+                          <Text style={[
+                            dynamicStyles.kanbanTaskPriority,
+                            { color: getPriorityColor(task.priority) }
+                          ]}>
+                            {task.priority}
+                          </Text>
+                        </View>
+                        <View style={dynamicStyles.kanbanTaskActions}>
+                          <TouchableOpacity
+                            style={[dynamicStyles.kanbanActionButton, dynamicStyles.kanbanCompleteButton]}
+                            onPress={() => handleTaskStatusChange(task, task.status === 'completed' ? 'pending' : 'completed')}
+                          >
+                            <Ionicons 
+                              name={task.status === 'completed' ? 'checkmark-circle' : 'ellipse-outline'} 
+                              size={16} 
+                              color={task.status === 'completed' ? '#4CAF50' : '#9E9E9E'} 
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[dynamicStyles.kanbanActionButton, dynamicStyles.kanbanEditButton]}
+                            onPress={() => { setEditingTask(task); setModalVisible(true); }}
+                          >
+                            <Ionicons name="create-outline" size={16} color="#2196F3" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          ))}
+        </ScrollView>
+      )}
       
       {/* Enhanced FAB Menu */}
-      {/* Voice Task Creator */}
-      <Animated.View style={[
-        dynamicStyles.fabSubButton,
-        {
-          bottom: 32 + 80,
-          opacity: fabAnimation,
-          transform: [{
-            scale: fabAnimation.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 1],
-            }),
-          }],
-        }
-      ]}>
-        <TouchableOpacity 
-          style={[dynamicStyles.fabSubButton, { backgroundColor: '#FF4444' }]}
-          onPress={() => setShowVoiceCreator(true)}
-        >
-          <Ionicons name="mic" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Animated.View style={[
-          dynamicStyles.fabLabel,
-          { bottom: 16, opacity: fabAnimation }
-        ]}>
-          <Text style={dynamicStyles.fabLabelText}>Voice</Text>
-        </Animated.View>
-      </Animated.View>
-
       {/* AI Suggestions */}
       <Animated.View style={[
         dynamicStyles.fabSubButton,
         {
-          bottom: 32 + 160,
+          bottom: 20 + 60,
           opacity: fabAnimation,
           transform: [{
             scale: fabAnimation.interpolate({
@@ -334,11 +925,11 @@ const TaskManagementScreen = ({ navigation }) => {
           style={[dynamicStyles.fabSubButton, { backgroundColor: '#4ECDC4' }]}
           onPress={() => setShowAISuggestions(true)}
         >
-          <Ionicons name="bulb" size={24} color="#fff" />
+          <Ionicons name="bulb" size={18} color="#fff" />
         </TouchableOpacity>
         <Animated.View style={[
           dynamicStyles.fabLabel,
-          { bottom: 16, opacity: fabAnimation }
+          { bottom: 10, opacity: fabAnimation }
         ]}>
           <Text style={dynamicStyles.fabLabelText}>AI Suggestions</Text>
         </Animated.View>
@@ -350,7 +941,7 @@ const TaskManagementScreen = ({ navigation }) => {
       <Animated.View style={[
         dynamicStyles.fabSubButton,
         {
-          bottom: 32 + 240, // Adjusted position after removing templates
+          bottom: 20 + 110, // Adjusted position after removing voice
           opacity: fabAnimation,
           transform: [{
             scale: fabAnimation.interpolate({
@@ -364,11 +955,11 @@ const TaskManagementScreen = ({ navigation }) => {
           style={[dynamicStyles.fabSubButton, { backgroundColor: '#2ECC71' }]}
           onPress={() => setShowDependencies(true)}
         >
-          <MaterialCommunityIcons name="source-branch" size={24} color="#fff" />
+          <MaterialCommunityIcons name="source-branch" size={18} color="#fff" />
         </TouchableOpacity>
         <Animated.View style={[
           dynamicStyles.fabLabel,
-          { bottom: 16, opacity: fabAnimation }
+          { bottom: 10, opacity: fabAnimation }
         ]}>
           <Text style={dynamicStyles.fabLabelText}>Dependencies</Text>
         </Animated.View>
@@ -403,24 +994,16 @@ const TaskManagementScreen = ({ navigation }) => {
             }),
           }],
         }}>
-          <Ionicons name="add" size={32} color="#fff" />
+          <Ionicons name="add" size={24} color="#fff" />
         </Animated.View>
       </TouchableOpacity>
       
       {/* Advanced Feature Modals */}
-      <VoiceTaskCreator
-        visible={showVoiceCreator}
-        onClose={() => setShowVoiceCreator(false)}
-        onTaskCreated={handleVoiceTaskCreate}
-      />
-      
       <AITaskSuggestions
         visible={showAISuggestions}
         onClose={() => setShowAISuggestions(false)}
         userId="current-user-id"
       />
-      
-      {/* ✅ REMOVED: TaskTemplates component as requested */}
       
       <TaskDependencies
         visible={showDependencies}

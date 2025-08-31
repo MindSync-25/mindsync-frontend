@@ -32,7 +32,7 @@ const TaskStackNavigator = () => {
     <Stack.Navigator
       id={undefined}
       screenOptions={{
-        headerShown: true,
+        headerShown: false, // Hide header for all screens in this stack
         headerStyle: { backgroundColor: '#007AFF' },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: 'bold' },
@@ -41,12 +41,12 @@ const TaskStackNavigator = () => {
       <Stack.Screen 
         name="TaskList" 
         component={TaskManagementScreen} 
-        options={{ title: 'Tasks' }} 
+        options={{ title: 'Tasks', headerShown: false }} 
       />
       <Stack.Screen 
         name="TaskDetail" 
         component={TaskDetailScreen} 
-        options={{ title: 'Task Details' }} 
+        options={{ title: 'Task Details', headerShown: true }} // Keep header for task details
       />
     </Stack.Navigator>
   );

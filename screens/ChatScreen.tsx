@@ -11,22 +11,19 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
+import { aiAPI } from '../services/aiAPI';
+import { authApi } from '../services/authApi';
+import VoiceChatButton from '../components/VoiceChatButton';
 
 interface ChatMessage {
   id: string;
   text: string;
   isUser: boolean;
   timestamp: Date;
-  type?: 'text' | 'suggestion' | 'task' | 'calendar';
-}
-
-interface AISuggestion {
-  id: string;
-  title: string;
-  description: string;
-  action: () => void;
+  type?: 'text' | 'suggestion' | 'task' | 'calendar' | 'voice';
+  audioUrl?: string;
 }
 
 const ChatScreen: React.FC = () => {
@@ -34,42 +31,33 @@ const ChatScreen: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
+  const [userId, setUserId] = useState<string>('');
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Mock AI suggestions
-  const [suggestions] = useState<AISuggestion[]>([
-    {
-      id: '1',
-      title: 'Create Task',
-      description: 'Add a new task to your list',
-      action: () => handleSuggestion('Create a new task for me'),
-    },
-    {
-      id: '2',
-      title: 'Schedule Meeting',
-      description: 'Set up a meeting with someone',
-      action: () => handleSuggestion('Help me schedule a meeting'),
-    },
-    {
-      id: '3',
-      title: 'Daily Summary',
-      description: 'Get your daily productivity summary',
-      action: () => handleSuggestion('Show me my daily summary'),
-    },
-    {
-      id: '4',
-      title: 'Time Analysis',
-      description: 'Analyze how you spend your time',
-      action: () => handleSuggestion('Analyze my time usage'),
-    },
-  ]);
+  // Load user session and get real user ID from JWT token
+  useEffect(() => {
+    const loadUserSession = async () => {
+      try {
+        const session = await authApi.getCurrentSession();
+        if (session && session.userId) {
+          setUserId(session.userId);
+          console.log('✅ Loaded user session for chat:', session.userId);
+        } else {
+          console.warn('⚠️ No user session found, user may need to login');
+        }
+      } catch (error) {
+        console.error('❌ Error loading user session:', error);
+      }
+    };
+    
+    loadUserSession();
+  }, []);
 
   useEffect(() => {
     // Initialize with welcome message
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
-      text: "Hello! I'm your AI assistant. I can help you with tasks, scheduling, productivity insights, and more. How can I assist you today?",
+      text: "Hello! I'm your AI assistant. I'm connected directly to the backend and ready to help you with tasks, productivity insights, and more. What can I do for you?",
       isUser: false,
       timestamp: new Date(),
       type: 'text',
@@ -99,80 +87,125 @@ const ChatScreen: React.FC = () => {
     setInputText('');
     setIsLoading(true);
 
-    // Simulate AI response
-    await simulateAIResponse(inputText.trim());
+    // Call backend AI
+    await sendToBackend(inputText.trim());
     setIsLoading(false);
   };
 
-  const handleSuggestion = async (suggestionText: string) => {
+  // Handle voice transcript
+  const handleVoiceTranscript = (transcript: string) => {
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      text: suggestionText,
+      text: transcript,
       isUser: true,
       timestamp: new Date(),
-      type: 'suggestion',
+      type: 'voice',
     };
 
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
-
-    await simulateAIResponse(suggestionText);
-    setIsLoading(false);
-  };
-
-  const simulateAIResponse = async (userInput: string): Promise<void> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        let responseText = '';
-        let responseType: 'text' | 'task' | 'calendar' = 'text';
-
-        // Simple AI response simulation based on keywords
-        const input = userInput.toLowerCase();
-        
-        if (input.includes('task') || input.includes('todo')) {
-          responseText = "I can help you create a task! What would you like to add to your task list? Please provide a title and any details.";
-          responseType = 'task';
-        } else if (input.includes('meeting') || input.includes('schedule') || input.includes('calendar')) {
-          responseText = "I'll help you schedule a meeting. What's the meeting about, and when would you like to schedule it?";
-          responseType = 'calendar';
-        } else if (input.includes('summary') || input.includes('report')) {
-          responseText = `📊 **Daily Summary**\n\n✅ Tasks Completed: 3/5\n⏰ Time Tracked: 4h 30m\n📈 Productivity Score: 85%\n\nYou're doing great! Consider taking a short break to maintain your productivity.`;
-        } else if (input.includes('time') || input.includes('analysis')) {
-          responseText = `⏱️ **Time Analysis**\n\n🔥 Most Productive: 10AM - 12PM\n📱 Focus Time: 3h 15m\n⚡ Breaks Taken: 4\n\nTip: Your productivity peaks in the morning. Schedule important tasks then!`;
-        } else if (input.includes('hello') || input.includes('hi')) {
-          responseText = "Hello! I'm here to help you stay productive and organized. You can ask me to create tasks, schedule meetings, analyze your time, or get productivity insights.";
-        } else {
-          responseText = "I understand you're looking for assistance. I can help with:\n\n• Creating and managing tasks\n• Scheduling meetings and events\n• Productivity analysis\n• Daily summaries\n• Time tracking insights\n\nWhat would you like to work on?";
-        }
-
-        const aiMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          text: responseText,
-          isUser: false,
-          timestamp: new Date(),
-          type: responseType,
-        };
-
-        setMessages(prev => [...prev, aiMessage]);
-        resolve();
-      }, 1000 + Math.random() * 1000); // 1-2 second delay
-    });
-  };
-
-  const handleVoiceInput = () => {
-    setIsListening(!isListening);
     
-    if (!isListening) {
-      // Simulate voice recognition
-      Alert.alert(
-        'Voice Input',
-        'Voice recognition would be integrated here with speech-to-text services.',
-        [{ text: 'OK' }]
-      );
+    // 🚨 DON'T CALL sendToBackend here - the voice API already handles the AI response
+    // sendToBackend(transcript); // REMOVED - this was causing duplicate requests
+  };
+
+  // Handle voice response
+  const handleVoiceResponse = (response: string, actions?: any[]) => {
+    setIsLoading(false);
+    
+    const aiMessage: ChatMessage = {
+      id: (Date.now() + 1).toString(),
+      text: response,
+      isUser: false,
+      timestamp: new Date(),
+      type: 'voice',
+    };
+
+    setMessages(prev => [...prev, aiMessage]);
+
+    // Handle actionable items if provided
+    if (actions && actions.length > 0) {
+      const actionMessage: ChatMessage = {
+        id: (Date.now() + 2).toString(),
+        text: `I can help you with:\n${actions.map(item => `• ${item.text || item.description || item}`).join('\n')}`,
+        isUser: false,
+        timestamp: new Date(),
+        type: 'suggestion',
+      };
       
       setTimeout(() => {
-        setIsListening(false);
-      }, 3000);
+        setMessages(prev => [...prev, actionMessage]);
+      }, 500);
+    }
+  };
+
+  // Handle voice errors
+  const handleVoiceError = (error: string) => {
+    setIsLoading(false);
+    
+    const errorMessage: ChatMessage = {
+      id: (Date.now() + 1).toString(),
+      text: `Voice error: ${error}`,
+      isUser: false,
+      timestamp: new Date(),
+      type: 'text',
+    };
+
+    setMessages(prev => [...prev, errorMessage]);
+  };
+
+  const sendToBackend = async (userInput: string): Promise<void> => {
+    try {
+      console.log('🧠 Sending to backend with JWT auth:', userInput);
+      console.log('🔑 User ID:', userId);
+      
+      // Direct call to backend AI API with JWT token
+      const aiResponse = await aiAPI.sendChatMessage(userInput, userId);
+      
+      console.log('✅ Backend response received:', {
+        response: aiResponse.response,
+        confidence: aiResponse.confidence,
+        actionableItems: aiResponse.actionableItems
+      });
+
+      // Add AI response to chat
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text: aiResponse.response,
+        isUser: false,
+        timestamp: new Date(),
+        type: 'text',
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+
+      // Handle actionable items if provided
+      if (aiResponse.actionableItems && aiResponse.actionableItems.length > 0) {
+        const actionMessage: ChatMessage = {
+          id: (Date.now() + 2).toString(),
+          text: `I can help you with:\n${aiResponse.actionableItems.map(item => `• ${item.text}`).join('\n')}`,
+          isUser: false,
+          timestamp: new Date(),
+          type: 'suggestion',
+        };
+        
+        setTimeout(() => {
+          setMessages(prev => [...prev, actionMessage]);
+        }, 500);
+      }
+
+    } catch (error) {
+      console.error('❌ Backend error:', error);
+      
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text: "Sorry, I'm having trouble connecting to the backend right now. Please try again in a moment.",
+        isUser: false,
+        timestamp: new Date(),
+        type: 'text',
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
@@ -231,6 +264,10 @@ const ChatScreen: React.FC = () => {
       borderWidth: 1,
       borderColor: theme === 'light' ? '#e0e0e0' : '#333',
     },
+    voiceMessage: {
+      borderLeftWidth: 4,
+      borderLeftColor: '#007AFF',
+    },
     messageText: {
       fontSize: 16,
       lineHeight: 22,
@@ -246,41 +283,6 @@ const ChatScreen: React.FC = () => {
       color: theme === 'light' ? '#666' : '#aaa',
       marginTop: 4,
       textAlign: 'center',
-    },
-    suggestionsContainer: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderTopWidth: 1,
-      borderTopColor: theme === 'light' ? '#e0e0e0' : '#333',
-    },
-    suggestionsTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: theme === 'light' ? '#000' : '#fff',
-      marginBottom: 12,
-    },
-    suggestionsGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    suggestionCard: {
-      backgroundColor: theme === 'light' ? '#f0f0f0' : '#1a1a1a',
-      borderRadius: 12,
-      padding: 12,
-      width: '48%',
-      borderWidth: 1,
-      borderColor: theme === 'light' ? '#e0e0e0' : '#333',
-    },
-    suggestionTitle: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: theme === 'light' ? '#000' : '#fff',
-      marginBottom: 4,
-    },
-    suggestionDescription: {
-      fontSize: 12,
-      color: theme === 'light' ? '#666' : '#aaa',
     },
     inputContainer: {
       flexDirection: 'row',
@@ -303,14 +305,6 @@ const ChatScreen: React.FC = () => {
       backgroundColor: theme === 'light' ? '#f8f9fa' : '#2a2a2a',
       color: theme === 'light' ? '#000' : '#fff',
       maxHeight: 100,
-    },
-    voiceButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: isListening ? '#FF3B30' : '#007AFF',
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     sendButton: {
       width: 44,
@@ -361,6 +355,7 @@ const ChatScreen: React.FC = () => {
             <View
               style={[
                 message.isUser ? dynamicStyles.userMessage : dynamicStyles.aiMessage,
+                message.type === 'voice' ? dynamicStyles.voiceMessage : null,
               ]}
             >
               <Text
@@ -373,6 +368,14 @@ const ChatScreen: React.FC = () => {
               >
                 {message.text}
               </Text>
+              {message.type === 'voice' && (
+                <Text style={[
+                  dynamicStyles.timestamp, 
+                  { marginTop: 8, textAlign: 'left', fontSize: 10 }
+                ]}>
+                  🎤 Voice message
+                </Text>
+              )}
             </View>
             <Text style={dynamicStyles.timestamp}>
               {formatTime(message.timestamp)}
@@ -384,45 +387,13 @@ const ChatScreen: React.FC = () => {
         {isLoading && (
           <View style={dynamicStyles.loadingContainer}>
             <ActivityIndicator size="small" color="#007AFF" />
-            <Text style={dynamicStyles.loadingText}>AI is thinking...</Text>
+            <Text style={dynamicStyles.loadingText}>AI is processing your request...</Text>
           </View>
         )}
       </ScrollView>
 
-      {/* Suggestions */}
-      {messages.length === 1 && ( // Only show on initial welcome
-        <View style={dynamicStyles.suggestionsContainer}>
-          <Text style={dynamicStyles.suggestionsTitle}>Quick Actions</Text>
-          <View style={dynamicStyles.suggestionsGrid}>
-            {suggestions.map((suggestion) => (
-              <TouchableOpacity
-                key={suggestion.id}
-                style={dynamicStyles.suggestionCard}
-                onPress={suggestion.action}
-              >
-                <Text style={dynamicStyles.suggestionTitle}>{suggestion.title}</Text>
-                <Text style={dynamicStyles.suggestionDescription}>
-                  {suggestion.description}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      )}
-
       {/* Input */}
       <View style={dynamicStyles.inputContainer}>
-        <TouchableOpacity
-          style={dynamicStyles.voiceButton}
-          onPress={handleVoiceInput}
-        >
-          <MaterialCommunityIcons
-            name={isListening ? "microphone" : "microphone-outline"}
-            size={24}
-            color="#fff"
-          />
-        </TouchableOpacity>
-
         <TextInput
           style={dynamicStyles.textInput}
           placeholder="Type your message..."
@@ -432,6 +403,16 @@ const ChatScreen: React.FC = () => {
           multiline
           onSubmitEditing={handleSend}
           returnKeyType="send"
+        />
+
+        {/* Voice Chat Button */}
+        <VoiceChatButton
+          userId={userId}
+          onTranscript={handleVoiceTranscript}
+          onResponse={handleVoiceResponse}
+          onError={handleVoiceError}
+          size="medium"
+          disabled={!userId || isLoading}
         />
 
         <TouchableOpacity

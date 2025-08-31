@@ -17,9 +17,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../context/ThemeContext';
 import { useTasks } from '../context/TaskContext';
-import WeatherWidget from '../components/WeatherWidget';
-import NewsWidget from '../components/NewsWidget';
-import MoodNewsTrigger from '../components/MoodNewsTrigger';
+// 🧠 AI-Enhanced Components
+import AIProductivityWidget from '../components/AIProductivityWidget';
+import AIAssistantWidget from '../components/AIAssistantWidget';
 
 const { width } = Dimensions.get('window');
 
@@ -28,12 +28,8 @@ type RootStackParamList = {
   Signup: undefined;
   Home: undefined;
   Profile: undefined;
-  Weather: undefined;
   ComingSoon: undefined;
   TaskManagement: undefined;
-  NewsFeed: { currentMood: string; isTriggeredByMood: boolean };
-  NewsInterestsOnboarding: undefined;
-  LegendaryTest: undefined;
 };
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -46,8 +42,6 @@ const HomeScreen: React.FC = () => {
     email: '',
     isLoaded: false
   });
-
-  const [selectedMood, setSelectedMood] = useState<string>('');
 
   const dynamicStyles = StyleSheet.create({
     container: {
@@ -149,20 +143,13 @@ const HomeScreen: React.FC = () => {
   const meetingTime = '4:00 PM';
   const toDoList = ['Finish project report', 'Call Sarah at 3 PM'];
   const notesList = ['Plan vacation', 'Research destinations and flights'];
-  const remindersList = ["Doctor’s appointment — Tomorrow, 9:00 AM"];
+  const remindersList = ["Doctor's appointment — Tomorrow, 9:00 AM"];
   const weather = { temperature: 72, condition: 'Sunny' };
   const suggestedActions = ['Start Focus Timer', 'View Daily Summary', 'Clear Emails'];
-  const moodIcons: Array<{
-    icon: keyof typeof MaterialCommunityIcons.glyphMap;
-    mood: string;
-    emoji: string;
-  }> = [
-    { icon: 'emoticon-happy-outline', mood: 'happy', emoji: '😊' },
-    { icon: 'emoticon-excited-outline', mood: 'excited', emoji: '🔥' },
-    { icon: 'emoticon-neutral-outline', mood: 'relaxed', emoji: '😌' },
-    { icon: 'emoticon-sad-outline', mood: 'sad', emoji: '😔' },
-    { icon: 'emoticon-angry-outline', mood: 'stressed', emoji: '🌱' },
-    { icon: 'emoticon-cool-outline', mood: 'motivated', emoji: '💪' }
+  const moodIcons: Array<keyof typeof MaterialCommunityIcons.glyphMap> = [
+    'emoticon-happy-outline',
+    'emoticon-neutral-outline',
+    'emoticon-sad-outline'
   ];
 
   // Loads session when component mounts
@@ -233,24 +220,24 @@ const HomeScreen: React.FC = () => {
             />
           </View>
 
-          {/* Today’s Overview */}
-          <View style={[styles.card, styles.maxCardWidth]}>
-            <Text style={styles.cardTitle}>Today’s overview</Text>
+          {/* Today's Overview */}
+          <View style={[dynamicStyles.card, styles.maxCardWidth]}>
+            <Text style={dynamicStyles.cardTitle}>Today's overview</Text>
             <View style={styles.overviewRow}>
-              <MaterialCommunityIcons name="playlist-check" size={20} color="#f5f5f5" />
-              <Text style={styles.overviewText}>{`${tasksDue} tasks due`}</Text>
+              <MaterialCommunityIcons name="playlist-check" size={20} color={theme === 'light' ? '#666' : '#f5f5f5'} />
+              <Text style={dynamicStyles.overviewText}>{`${tasksDue} tasks due`}</Text>
 
               <MaterialCommunityIcons
                 name="bell-outline"
                 size={20}
-                color="#f5f5f5"
+                color={theme === 'light' ? '#666' : '#f5f5f5'}
                 style={{ marginLeft: 24 }}
               />
-              <Text style={styles.overviewText}>{`${remindersCount} reminder`}</Text>
+              <Text style={dynamicStyles.overviewText}>{`${remindersCount} reminder`}</Text>
 
               <View style={{ flex: 1 }} />
 
-              <Text style={styles.overviewText}>Meeting at {meetingTime}</Text>
+              <Text style={dynamicStyles.overviewText}>Meeting at {meetingTime}</Text>
             </View>
           </View>
 
@@ -279,16 +266,12 @@ const HomeScreen: React.FC = () => {
                 )}
               </TouchableOpacity>
 
-              {/* Backend Integration Test */}
-              <TouchableOpacity style={[dynamicStyles.card, styles.gridItem]} onPress={() => navigation.navigate('LegendaryTest')} activeOpacity={0.8}>
-                <MaterialCommunityIcons name="rocket-launch" size={28} color="#FF6B35" style={{ marginBottom: 8 }} />
-                <Text style={dynamicStyles.cardTitle}>🔥 Backend Test</Text>
-                <Text style={[dynamicStyles.listItemText, { color: '#FF6B35', fontWeight: 'bold' }]}>
-                  LEGENDARY API
-                </Text>
-                <Text style={dynamicStyles.listItemText}>
-                  Test Heroku Integration
-                </Text>
+              {/* Notes */}
+              <TouchableOpacity style={[dynamicStyles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
+                <Text style={dynamicStyles.cardTitle}>Notes</Text>
+                {notesList.map((item, i) => (
+                  <Text key={i} style={dynamicStyles.listItemText}>{item}</Text>
+                ))}
               </TouchableOpacity>
 
               {/* Reminders */}
@@ -299,80 +282,88 @@ const HomeScreen: React.FC = () => {
                 ))}
               </TouchableOpacity>
 
-              {/* Weather - fits in grid */}
-              <View style={styles.gridItem}>
-                <WeatherWidget />
-              </View>
+              {/* Weather */}
+              <TouchableOpacity style={[dynamicStyles.card, styles.gridItem]} onPress={() => navigation.navigate('ComingSoon')} activeOpacity={0.8}>
+                <Text style={dynamicStyles.cardTitle}>Weather</Text>
+                <View style={styles.overviewRow}>
+                  <View style={styles.weatherCircle} />
+                  <Text style={styles.weatherText}>{`${weather.temperature}°`}</Text>
+                </View>
+                <Text style={dynamicStyles.listItemText}>{weather.condition}</Text>
+              </TouchableOpacity>
 
-              {/* News Feed - fits in grid */}
-              <View style={styles.gridItem}>
-                <NewsWidget currentMood={selectedMood} />
-              </View>
-
-              {/* Suggested Actions - fits in grid */}
+              {/* 🧠 AI Productivity Insights - NEW AI WIDGET */}
               <View style={styles.gridItemLeft}>
-                <View style={dynamicStyles.card}>
-                  <Text style={dynamicStyles.cardTitle}>Suggested actions</Text>
-                  {suggestedActions.map((action, i) => (
-                    <TouchableOpacity key={i} style={dynamicStyles.actionButton} onPress={() => navigation.navigate('ComingSoon')}>
-                      <Text style={dynamicStyles.actionButtonText}>{action}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <AIProductivityWidget 
+                  userId={userSession.userId || 'demo'} 
+                  onDetailsPress={() => navigation.navigate('TaskManagement')} 
+                />
               </View>
 
-              {/* How are you feeling today - fits in grid */}
+              {/* 🧠 AI Assistant - NEW AI WIDGET */}
               <View style={styles.gridItem}>
-                <View style={dynamicStyles.card}>
-                  <Text style={[dynamicStyles.cardTitle, styles.compactCardTitle]}>How are you feeling?</Text>
-                  <View style={styles.moodGridCompact}>
-                    {moodIcons.map((moodItem, i) => (
-                      <TouchableOpacity 
-                        key={i} 
-                        style={styles.moodButtonCompact} 
-                        onPress={() => {
-                          setSelectedMood(moodItem.mood);
-                          // This will trigger the MoodNewsTrigger component
-                        }}
-                      >
-                        <Text style={styles.moodEmojiCompact}>{moodItem.emoji}</Text>
-                        <Text style={[styles.moodLabelCompact, theme === 'light' && { color: '#666' }]}>
-                          {moodItem.mood.charAt(0).toUpperCase() + moodItem.mood.slice(1)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
+                <AIAssistantWidget 
+                  onSuggestionAction={(suggestion) => {
+                    console.log('AI Suggestion:', suggestion);
+                    navigation.navigate('TaskManagement');
+                  }}
+                />
               </View>
             </View>
           </View>
 
+          {/* Suggested Actions & Mood (side by side on web, stacked on mobile) */}
+          <View style={[styles.suggestedMoodRow, styles.maxCardWidth]}>
+            <View style={[dynamicStyles.card, styles.suggestedCard]}>
+              <Text style={dynamicStyles.cardTitle}>Suggested actions</Text>
+              {suggestedActions.map((action, i) => (
+                <TouchableOpacity key={i} style={dynamicStyles.actionButton} onPress={() => navigation.navigate('ComingSoon')}>
+                  <Text style={dynamicStyles.actionButtonText}>{action}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={[dynamicStyles.card, styles.moodCard]}>
+              <Text style={dynamicStyles.cardTitle}>How are you feeling today?</Text>
+              <View style={styles.moodRow}>
+                {moodIcons.map((icon, i) => (
+                  <TouchableOpacity key={i} style={styles.moodButton} onPress={() => navigation.navigate('ComingSoon')}>
+                    <MaterialCommunityIcons name={icon} size={28} color={theme === 'light' ? '#666' : '#f5f5f5'} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
           {/* ...existing code... */}
         </View>
       </ScrollView>
 
-      {/* Fixed Bottom “Ask me anything…” bar */}
+      {/* Fixed Bottom AI-Enhanced "Ask me anything…" bar */}
       <View style={styles.fixedBottomBarContainer}>
         <View style={[styles.bottomBar, styles.maxCardWidth]}>
-          <TextInput
-            placeholder="Ask me anything..."
-            placeholderTextColor="#888"
-            editable={false}
-            style={styles.bottomInput}
+          <MaterialCommunityIcons 
+            name="brain" 
+            size={20} 
+            color="#4A9EFF" 
+            style={{ marginRight: 8 }} 
           />
-          <TouchableOpacity style={styles.micButton} onPress={() => {/* voice command handler */}}>
-            <MaterialCommunityIcons name="microphone-outline" size={28} color="#f5f5f5" />
+          <TextInput
+            placeholder="Ask AI anything about your tasks..."
+            placeholderTextColor={theme === 'light' ? '#666' : '#888'}
+            editable={false}
+            style={[styles.bottomInput, { 
+              backgroundColor: theme === 'light' ? '#f0f0f0' : '#181818',
+              color: theme === 'light' ? '#000' : '#f5f5f5'
+            }]}
+            onTouchStart={() => navigation.navigate('TaskManagement')}
+          />
+          <TouchableOpacity 
+            style={dynamicStyles.micButton} 
+            onPress={() => navigation.navigate('TaskManagement')}
+          >
+            <MaterialCommunityIcons name="microphone-outline" size={28} color={theme === 'light' ? '#666' : '#f5f5f5'} />
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Mood News Trigger Component */}
-      {selectedMood && (
-        <MoodNewsTrigger
-          currentMood={selectedMood}
-          onMoodSelect={setSelectedMood}
-        />
-      )}
     </View>
   );
 };
@@ -581,56 +572,6 @@ const styles = StyleSheet.create({
 
   moodRow: { flexDirection: 'row', marginTop: 8 },
   moodButton: { marginRight: 16 },
-  moodGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    marginTop: 8,
-    justifyContent: 'space-between',
-  },
-  moodButtonWithLabel: { 
-    alignItems: 'center',
-    marginBottom: 12,
-    width: '30%',
-    minWidth: 60,
-  },
-  moodEmoji: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  moodLabel: {
-    fontSize: 12,
-    color: '#aaa',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-
-  // Compact styles for the moved mood section
-  moodGridCompact: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    marginTop: 6,
-    justifyContent: 'space-between',
-  },
-  moodButtonCompact: { 
-    alignItems: 'center',
-    marginBottom: 8,
-    width: '30%',
-    minWidth: 50,
-  },
-  moodEmojiCompact: {
-    fontSize: 18,
-    marginBottom: 2,
-  },
-  moodLabelCompact: {
-    fontSize: 10,
-    color: '#aaa',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  compactCardTitle: {
-    fontSize: 16,
-    marginBottom: 6,
-  },
 
   suggestedMoodRow: Platform.select({
     web: {
@@ -735,9 +676,7 @@ const styles = StyleSheet.create({
   }),
   bottomInput: {
     flex: 1,
-    color: '#f5f5f5',
     fontSize: 16,
-    backgroundColor: '#181818',
     borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: 8,
